@@ -1,0 +1,38 @@
+Third-party notices
+===================
+
+This binary embeds the following third-party components. They are not covered
+by the repository's MIT LICENSE and may have different redistribution terms.
+
+1. Device-side HarmonyOS binaries (internal/assets/device/*.so)
+   - libscrcpy_server*.z.so and uitest_agent*.so are distributed by Huawei as
+     part of the HOScrcpy SDK (`hosScrcpy-*-beta.jar`).
+   - They are proprietary Huawei binaries; no license is granted by this
+     repository. Verify that you have the right to redistribute them before
+     shipping this binary. A safer deployment loads them at runtime from a
+     user-provided official SDK jar.
+   - They carry an appended Huawei CBG code signature, which the HarmonyOS
+     uitest loader requires.
+
+2. hdc (internal/assets/hdc/*)
+   - hdc from the OpenHarmony `developtools_hdc` project, Apache License 2.0.
+   - The bundled `libusb_shared` binaries are libusb, LGPL-2.1-or-later. They are
+     extracted to a cache directory at runtime and dynamically loaded, not
+     statically linked. Provide the libusb source/notice and relinking
+     information if you redistribute them.
+   - The hdc binaries used here were taken from the OpenHarmony_Scrcpy project
+     (Apache-2.0) as a convenience; replace them with your own DevEco hdc if
+     your distribution requires a newer version.
+
+3. jmuxer (internal/assets/web/jmuxer.min.js)
+   - jmuxer, MIT License, https://github.com/samir3629/jmuxer.
+
+4. Go modules
+   - google.golang.org/grpc, google.golang.org/protobuf, golang.org/x/net,
+     golang.org/x/sys, golang.org/x/text: Apache-2.0/BSD-style licenses.
+   - github.com/gorilla/websocket: BSD-2-Clause.
+   - See go.sum / the module sources for the exact notices.
+
+The reverse-engineering protocol descriptions and the original Go/JS code are
+provided for interoperability and research. Huawei trademarks and binaries
+remain the property of their owners.

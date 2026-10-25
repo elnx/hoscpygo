@@ -1,0 +1,221 @@
+# hoscpygo
+
+A single-binary Go server for HarmonyOS/OpenHarmony device mirroring and control.
+It replaces the Java/JavaCV/Swing host of
+[HOScrcpy](https://gitcode.com/OpenHarmonyToolkitsPlaza/HOScrcpy) with:
+
+- a Go device/session core (hdc + uitest agent + gRPC H.264),
+- an embedded browser UI (no npm build step, no CDN),
+- embedded hdc binaries and embedded device-side assets (`libscreen_casting` variants + uitest agents),
+- no JVM, no JavaCV/OpenCV/Tesseract, no CGO.
+
+The browser is the video client: H.264 is decoded with **WebCodecs** when
+available, with an **MSE/jmuxer** fallback. The Go process never decodes video.
+
+## Features
+
+- Local and remote (`ip:8710`) hdc devices.
+- H.264 video stream (device-side hardware encoder, Annex-B AUs).
+- JPEG image-stream fallback (change-driven, typically 1–8 fps) for devices or
+  networks where the video extension is unavailable.
+- Touch/tap/swipe, mouse drag, wheel, keyboard, toolbar keys, text/IME paste.
+- Layout (view hierarchy) dump, tree view, search, bounds highlight, tap center.
+- Screenshot (live image frame or `snapshot_display`).
+- Settings for mode, scale, fps, bitrate, I-frame interval, remote hdc servers,
+  hdc path and listen address.
+- Automatic video-server variant selection and H.264 keyframe request on connect.
+
+## Quick start
+
+```bash
+make build
+./bin/hoscpygo
+# open http://127.0.0.1:8899/
+```
+
+Requirements on the host:
+
+- Linux, macOS (amd64/arm64) or Windows (amd64).
+- A Chromium browser with H.264 WebCodecs/MSE support (Chrome/Edge).
+- No hdc installation required: the binary contains hdc 3.2.0c + libusb for
+  linux/amd64, darwin/amd64, darwin/arm64 and windows/amd64. A system hdc in
+  `PATH`, `$HDC`, or the DevEco toolchain is preferred when present.
+- A device with USB debugging (or a reachable hdc server on port 8710).
+
+Flags:
+
+```
+-listen 127.0.0.1:8899   HTTP listen address
+-config <path>           config file (default: user config dir/hoscpygo/config.json)
+-hdc <path>              hdc executable
+-no-open                 do not open the browser
+-debug                   debug logging
+-version                 print version
+```
+
+URL shortcuts:
+
+- `/?sn=<serial>` selects and connects a device.
+- `/?session=<id>` attaches to an existing session.
+
+## Cross builds
+
+```bash
+make dist
+# dist/hoscpygo-linux-amd64
+# dist/hoscpygo-darwin-amd64
+# dist/hoscpygo-darwin-arm64
+# dist/hoscpygo-windows-amd64.exe
+```
+
+`CGO_ENABLED=0` is used for every target. Each artifact is a single file with
+the web UI, hdc, hdc's libusb, and all device `.so` assets embedded.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  UI[Browser UI<br/>canvas + tree] <-->|WebSocket JSON/binary| SRV[Go HTTP server]
+  SRV --> MGR[Session manager]
+  MGR --> HDC[hdc: shell / fport / file send]
+  MGR --> RPC[uitest agent JSON-RPC]
+  MGR --> GRPC[gRPC ScrcpyService/onStart]
+  HDC --> DEV[Device]
+  RPC --> DEV
+  GRPC --> DEV
+  DEV -->|Annex-B H.264| GRPC
+  DEV -->|JPEG| RPC
+```
+
+Two capture paths:
+
+| | Video | Image |
+|---|---|---|
+| Device asset | `internal/assets/device/server_unix_6.5.z.so` etc. | `agent_1.2.3.so` |
+| Loader | `/system/bin/uitest start-daemon singeness --extension-name hoscpy_server.z.so ...` | `uitest start-daemon singeness --extension-name hoscpy_agent.so` |
+| Transport | gRPC over `localabstract:scrcpy_grpc_socket` (or `tcp:5000` for legacy assets) | raw JSON + JPEG on a separate forwarded socket |
+| Protocol | `ScrcpyService/onStart` server stream; `payload["data"].val_bytes` | `Captures.startCaptureScreen` |
+| Rate | encoder rate (static screens send nothing) | change-driven, typically 1–8 fps |
+| Host decode | browser (WebCodecs/MSE) | browser `createImageBitmap` |
+
+Every fport is created **after** the device-side abstract socket exists. This
+matters: an hdc forward created too early silently points at nothing.
+
+## Protocol summary
+
+Exact proto recovered from the vendor SDK (no package):
+
+```proto
+message ReplyMessage {
+  string data = 1;
+  int32 reply_type = 2;
+  map<string, ParamValue> payload = 3;
+}
+message ParamValue {
+  oneof values {
+    int64 val_int = 1; double val_double = 2; string val_string = 3;
+    bool val_bool = 4; bytes val_bytes = 5; float val_float = 6;
+  }
+}
+message ReplyEndMessage { int32 result = 1; }
+message Empty {}
+service ScrcpyService {
+  rpc onStart(Empty) returns (stream ReplyMessage);
+  rpc onEnd(Empty) returns (ReplyEndMessage);
+  rpc onRequestIDRFrame(Empty) returns (ReplyEndMessage);
+}
+```
+
+Device server variants are selected from `uitest --version`:
+
+| uitest version | assets |
+|---|---|
+| > 6.0.2.1 | `server_unix_6.5` → `6.4` → `6.3.1` (abstract socket) |
+| ≤ 6.0.2.1 | `server_5.10` → `server3` → `server2` → `server1` (TCP :5000) |
+
+The uitest agent is selected similarly (`agent_1.2.3` for H7). Agent frames use:
+
+```
+"_uitestkit_rpc_message_head_" + uint32(1145141919) + uint32(len) + body +
+"_uitestkit_rpc_message_tail_"
+```
+
+The 4-byte word is a **magic**, not a session id; using a counter makes
+`captureLayout` time out. Control calls (`Gestures`, `callHypiumApi`) are sent as
+raw JSON. `touchDown/Move/Up` is a no-op on H7; input uses Hypium
+`Driver.click/swipe/longClick` for touch semantics and `Gestures`
+`ButtonLeft*`/`Axis*`/`uinput` for real-time mouse/wheel.
+
+## HTTP/WS API
+
+- `GET /api/health`
+- `GET /api/devices`
+- `POST /api/connect {sn,server,mode}` → `{session,state}`
+- `GET /api/session/{id}` | `/size` | `/layout` | `/screenshot`
+- `POST /api/session/{id}/mode {mode}` | `/input` | `/disconnect`
+- `GET/POST /api/config`
+- `GET /ws?session={id}` — binary H.264/JPEG frames; JSON state/errors.
+
+WS input messages: `touch` (`down/move/up`), `tap`, `swipe`, `mouse`, `wheel`,
+`key`, `text`, `rotate`.
+
+## Verified on
+
+| Device | OS | Video | Image/layout/input |
+|---|---|---|---|
+| device-A | HarmonyOS 7.0.0.17 (API 26, uitest 6.0.2.3) | ✅ 630×1360 High profile | ✅ |
+| device-B | HarmonyOS 7.0.0.21 (root/eng) | ✅ | ✅ |
+| device-C | HarmonyOS 7.0.0.257 | expected ✅ | expected ✅ |
+
+Measured: H.264 SPS/PPS+IDR ~32/202–45 KB, P frames ~3–9 KB at scale 2/8 Mbps;
+layout 58–180 KB; image stream ~8.4 fps at scale 0.5 under continuous input;
+Go `image/jpeg` decode ~13 ms for 640×1360.
+
+## Native `.so` / Huawei signature
+
+**A self-built `libscreen_casting.z.so` cannot be loaded on HarmonyOS 7 without a
+Huawei code signature.** See [`native/README.md`](native/README.md) for the reverse engineering
+analysis and experiments. In short:
+
+- the vendor server/agent have an appended Huawei CBG PKCS#7 signature;
+- a truncated vendor server (ELF intact, signature removed) does not initialize;
+- an unsigned self-built extension (OHOS NDK API 26) does not initialize;
+- appending the vendor signature to a different ELF does not initialize;
+- the same unsigned extension fails on a rooted/eng H7 device.
+
+Therefore the practical scope is: Go host + reuse the **signed** vendor device
+assets. Writing a new C++ server is possible for OpenHarmony/root targets
+(install to `/system/bin`, as `OpenHarmony_Scrcpy` does), but not for the uitest
+extension path on retail HarmonyOS without Huawei signing.
+
+## Licensing
+
+The Go code is MIT (see `LICENSE`). The embedded `internal/assets/device/*.so`
+and `internal/assets/hdc/*` are third-party/Huawei binaries and are **not**
+covered by that license; see `NOTICE`. If you redistribute this binary, confirm
+that you have the right to redistribute those assets. The safe alternative is
+to load them at runtime from a user-provided official SDK jar.
+
+## Development
+
+```bash
+make test
+make vet
+make proto   # requires protoc + protoc-gen-go + protoc-gen-go-grpc
+make build
+```
+
+Layout:
+
+```
+cmd/hoscpygo        entrypoint
+internal/assets     embed web/device/hdc assets + extraction
+internal/hdc        hdc CLI wrapper
+internal/uitest     agent lifecycle, JSON-RPC, layout, JPEG stream
+internal/scrcpy     proto client, server variant selection, H.264 stream
+internal/session    sessions, input, layout, screenshots, fan-out hub
+internal/webui      HTTP/WS API + embedded UI
+internal/assets/web browser UI (vanilla JS, WebCodecs + jmuxer fallback)
+proto/              scrcpy.proto
+native/             reverse-engineering findings + minimal OHOS extension probe
+```

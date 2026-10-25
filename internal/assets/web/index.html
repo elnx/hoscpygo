@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>hoscpygo · HarmonyOS mirror</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">hoscpygo <small>HarmonyOS</small></div>
+  <select id="devices" title="设备"></select>
+  <button id="refreshDevices">刷新</button>
+  <select id="connectMode" title="采集模式">
+    <option value="auto">自动</option>
+    <option value="video">视频 H.264</option>
+    <option value="image">图片 JPEG</option>
+  </select>
+  <button id="connect">连接</button>
+  <button id="disconnect" disabled>断开</button>
+  <span id="status">未连接</span>
+</header>
+
+<main>
+  <section class="stage">
+    <div class="toolbar">
+      <button data-key="Back" title="返回">◀ 返回</button>
+      <button data-key="Home" title="桌面">⌂ 桌面</button>
+      <button data-key="Power" title="电源">⏻ 电源</button>
+      <button data-key="VolumeUp" title="音量+">音量+</button>
+      <button data-key="VolumeDown" title="音量-">音量-</button>
+      <button id="rotate">旋转</button>
+      <button id="screenshot">截图</button>
+      <select id="inputMode" title="输入方式">
+        <option value="touch">触摸手势</option>
+        <option value="mouse">鼠标实时</option>
+      </select>
+      <button id="fit">适应窗口</button>
+      <span class="spacer"></span>
+      <input id="textInput" placeholder="输入文本后回车发送">
+      <button id="sendText">发送</button>
+    </div>
+    <div class="screen-wrap" id="screenWrap">
+      <canvas id="screen"></canvas>
+      <video id="mseVideo" muted autoplay playsinline></video>
+      <div id="highlight"></div>
+      <div id="tip">请选择设备并连接</div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="tabs">
+      <button id="tabLayout" class="active">控件树</button>
+      <button id="tabSettings">设置</button>
+    </div>
+    <div class="tab" id="layoutPanel">
+      <div class="row">
+        <input id="search" placeholder="搜索 type / text / id">
+        <button id="refreshLayout">刷新</button>
+      </div>
+      <div id="searchHits"></div>
+      <div id="tree"></div>
+    </div>
+    <div class="tab" id="settingsPanel" hidden>
+      <label class="field">采集模式
+        <select id="cfgMode">
+          <option value="auto">自动（视频失败回退图片）</option>
+          <option value="video">仅视频</option>
+          <option value="image">仅图片</option>
+        </select>
+      </label>
+      <div class="row">
+        <label class="field">缩放 1/N
+          <select id="cfgScale">
+            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+          </select>
+        </label>
+        <label class="field">帧率
+          <input id="cfgFps" type="number" min="1" max="120">
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">码率 Mbps
+          <input id="cfgBitrate" type="number" min="1" max="100">
+        </label>
+        <label class="field">I 帧间隔 ms
+          <input id="cfgIFrame" type="number" min="100">
+        </label>
+      </div>
+      <label class="field">图片流缩放 0-1
+        <input id="cfgImageScale" type="number" min="0.05" max="1" step="0.05">
+      </label>
+      <label class="field">远程 hdc 服务器（每行一个 ip[:port]）
+        <textarea id="cfgRemotes" placeholder="192.168.1.20:8710"></textarea>
+      </label>
+      <label class="field">hdc 路径（留空自动检测/内置）
+        <input id="cfgHdc" placeholder="hdc">
+      </label>
+      <label class="field">监听地址（修改后需重启）
+        <input id="cfgListen">
+      </label>
+      <div class="row">
+        <label class="field">自动打开浏览器
+          <select id="cfgOpen"><option value="true">是</option><option value="false">否</option></select>
+        </label>
+        <label class="field">保留 uitest agent
+          <select id="cfgKeep"><option value="true">是</option><option value="false">否</option></select>
+        </label>
+      </div>
+      <div class="row">
+        <button id="saveConfig">保存设置</button>
+        <button id="reloadConfig">重新读取</button>
+      </div>
+      <div style="color:var(--muted);font-size:12px">
+        高帧率/全分辨率视频解码建议使用 Chrome/Edge（WebCodecs 硬件解码）。
+        图片流约 8fps，仅在视频不可用时作为回退。
+      </div>
+    </div>
+  </aside>
+</main>
+
+<dialog id="shotDialog">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <strong>截图</strong>
+    <span><a id="shotDownload" download="hoscpygo.jpg">下载</a>
+    <button id="shotClose">关闭</button></span>
+  </div>
+  <img id="shotImg" alt="screenshot">
+</dialog>
+
+<script src="/static/jmuxer.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
