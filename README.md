@@ -188,6 +188,20 @@ assets. Writing a new C++ server is possible for OpenHarmony/root targets
 (install to `/system/bin`, as `OpenHarmony_Scrcpy` does), but not for the uitest
 extension path on retail HarmonyOS without Huawei signing.
 
+## Security
+
+- The HTTP server binds `127.0.0.1` by default and has no authentication. The
+  hdc/gRPC/uitest channels are plaintext. Expose it only behind SSH/VPN or a
+  trusted reverse proxy; do not bind `0.0.0.0` on an untrusted network.
+- The tool can inject input and run shell commands on the device. Only connect
+  devices you control.
+- The device `.so` is pushed with an md5 check, but `/data/local/tmp` is
+  writable by the device shell. Treat the device as trusted.
+- On macOS the embedded unsigned hdc may be quarantined by Gatekeeper; if it is
+  blocked, run `xattr -d com.apple.quarantine <extracted-hdc>` or use a
+  Developer-ID hdc from DevEco. Windows SmartScreen may warn on unsigned
+  binaries.
+
 ## Licensing
 
 The Go code is MIT (see `LICENSE`). The embedded `internal/assets/device/*.so`
