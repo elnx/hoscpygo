@@ -116,6 +116,16 @@ the seven projects above into the listed paths, then provide the xDS inputs
 below. Using the exact OpenHarmony revisions avoids mixing incompatible
 protobuf/gRPC branches.
 
+These seven can be added as Git submodules, but do not make them submodules of
+the main Go repository unless native developers are the primary audience:
+submodule initialization downloads ~300 MB of sources, and the xDS inputs need
+either five more pinned trees or a no-xDS CMake build. A separate
+`hoscpy-native-deps` repository, or `build-deps.sh` cloning into the gitignored
+`native/server/deps/src`, keeps `git clone hoscpygo` and `make dist` light. If
+submodules are used here, put them under a dedicated source root and set `OHOS`
+to that root; do not point `OHOS` at this repository and expect the Go tree to
+look like an OpenHarmony checkout.
+
 `upb`, `utf8_range`, and `address_sorting` are tracked inside the gRPC repo;
 protobuf's host build also uses its bundled `third_party/abseil-cpp` and
 `third_party/utf8_range`. They are not separate OpenHarmony repo projects.
@@ -142,6 +152,14 @@ them. The probe tree had them as untracked directories:
 `gRPC_DOWNLOAD_ARCHIVES=ON`, so CMake can fetch them. For an offline build,
 clone those five repos into the paths above at the pinned revisions first. A
 full `repo sync` alone is not sufficient for the xDS headers.
+
+Note that this is a property of the **CMake** build used by this probe, not of
+OpenHarmony itself. OpenHarmony's `third_party/grpc/BUILD.gn` defaults
+`grpc_enable_profiler_minimal=true`, which defines `GRPC_NO_XDS` and filters the
+xDS source files out; its GN build does not reference these five directories.
+The CMake build here does not use that GN configuration, so it compiles full
+xDS and needs them. Moving this build to a `GRPC_NO_XDS` CMake configuration,
+or driving the OpenHarmony GN build, would remove this extra dependency.
 
 ### Configure commands
 
