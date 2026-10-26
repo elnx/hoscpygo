@@ -1,0 +1,21 @@
+# Cross-compile for aarch64 OpenHarmony with the public NDK.
+# Override OHOS_NDK in the environment if the SDK is elsewhere.
+set(OHOS_NDK "$ENV{OHOS_NDK}" CACHE PATH "OpenHarmony native SDK")
+if(NOT OHOS_NDK)
+  set(OHOS_NDK "/home/dev/command-line-tools/sdk/default/openharmony/native")
+endif()
+
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(CMAKE_C_COMPILER "${OHOS_NDK}/llvm/bin/aarch64-unknown-linux-ohos-clang")
+set(CMAKE_CXX_COMPILER "${OHOS_NDK}/llvm/bin/aarch64-unknown-linux-ohos-clang++")
+set(CMAKE_SYSROOT "${OHOS_NDK}/sysroot")
+set(CMAKE_C_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT} -fPIC")
+set(CMAKE_CXX_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT} -fPIC")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT}")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(CMAKE_FIND_ROOT_PATH "${CMAKE_SYSROOT}")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)

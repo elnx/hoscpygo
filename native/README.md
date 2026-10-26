@@ -101,11 +101,27 @@ tests had confounders:
 - The earlier truncated/patch tests were run in that incomplete environment, so
   they do not prove a signature check.
 
-A proper unsigned-extension test needs a valid test-server/agent environment
-(e.g. the Hypium/uitest caller that `start-daemon` expects), mode 0755, the
-3-argument `OnInit`, and a clean `@uitest_socket` state. Until that is done, the
-signature requirement remains **unproven**; the signature block's existence is
-confirmed, but its enforcement is not.
+A proper unsigned-extension test needs mode 0755, the 3-argument `OnInit`, and a
+clean `@uitest_socket` state. A direct `dlopen` probe (which follows the same
+loader path minus the uitest apiCaller setup) now proves the unsigned library
+loads and its symbols resolve:
+
+```
+/data/local/tmp/dlprobe /data/local/tmp/hoscpy_server.z.so
+DLOK 0x...
+INIT 0x... RUN 0x...
+rc=0
+```
+
+A full self-built server (static protobuf/gRPC + public NDK screen capture) also
+starts from `runprobe` and serves live frames over the abstract socket. See
+[`server/README.md`](server/README.md). The standalone `uitest start-daemon`
+path still needs a valid test-server/apiCaller environment, so that particular
+daemon failure remains inconclusive, not a signature result.
+
+The signature trailer's existence is confirmed. Its enforcement by a lower
+layer was not found, and the direct loader is positive evidence that this
+`uitest`/`ld-musl` path does not reject an unsigned file.
 
 ### 2.4 The HarmonyOS PC error is unrelated to signing
 
@@ -154,22 +170,24 @@ A loaded probe changes its process name to `hoscpy_probe`, appears in
 `/proc/<pid>/maps`, and writes the probe logs. If the daemon reports
 `Failed to initialize server`, the test is **not** a valid signature test.
 
-## 4. What a rewrite would require
+## 4. Self-built server: what is proven
 
-A full C++ reimplementation still needs:
+A working probe now exists in [`server/`](server/README.md). It does **not** need
+the Rosen virtual-screen/system headers:
 
-- OHOS full-source headers for `OHOS::Rosen::ScreenManager`,
-  `VirtualScreenOption`, `DisplayManager` (not in the public NDK), or the public
-  `OH_AVScreenCapture` API with appropriate system permissions;
-- native media encoder (`libnative_media_venc`, `libnative_media_core`,
-  `libsurface`) and a surface from the virtual screen;
-- the gRPC/protobuf service from `../proto/scrcpy.proto` built against the
-  target OS's system `libprotobuf.z.so`/`libgrpc.z.so` ABI;
-- the same argv parameter parsing and abstract-socket naming;
-- per-OS-version ABI testing. Signing may be a distribution/policy requirement,
-  but the uitest loader itself shows no signature check; do not assume it is the
-  blocker without a valid-environment test.
+- public `OH_AVScreenCapture` (`libnative_avscreen_capture.so`) captures the home
+  screen into an encoder input surface;
+- public `OH_VideoEncoder` (`libnative_media_venc.so`) emits H.264;
+- protobuf 33.5 and gRPC 1.73 C++ are statically linked, so the `.so` has no
+  `libprotobuf.z.so`/`libgrpc*.z.so` dependency and avoids the PC ABI error;
+- the generic gRPC callback service implements the same
+  `/ScrcpyService/onStart`, `/ScrcpyService/onEnd`, and
+  `/ScrcpyService/onRequestIDRFrame` methods without generated service code;
+- SPS/PPS are collected and prepended to the first IDR; live frames decode on
+  the host (`h264`, Main, 2880x1920).
 
-The open-source OpenHarmony `OpenHarmony_Scrcpy` server is a useful reference for
-the capture/encoder plumbing, but it installs to `/system/bin` and requires a
-root/OpenHarmony image.
+The remaining gaps are practical, not loader policy: display geometry is
+hard-coded to the probed PC, the capture path is change-driven, one stream is
+supported, and the full `uitest start-daemon` path needs a valid
+test-server/apiCaller environment. The open-source `OpenHarmony_Scrcpy` server
+remains a useful reference for capture/encoder details.

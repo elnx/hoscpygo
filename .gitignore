@@ -3,3 +3,4 @@
 *.log
 .DS_Store
 native/build/
+native/server/build/

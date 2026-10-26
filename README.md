@@ -192,9 +192,13 @@ that Huawei signing is required by this loader. See
 and test caveats.
 
 Current practical scope: Go host + reuse the vendor assets that match the target
-OS ABI. A self-built C++ server is still hard because it needs OHOS system
-headers/APIs and a system `libprotobuf.z.so`/`libgrpc.z.so`-compatible build, not
-merely a signature.
+OS ABI. A self-built C++ probe is now working without system/Rosen headers: it
+uses the public `OH_AVScreenCapture` + `OH_VideoEncoder` APIs and statically
+links protobuf 33.5, gRPC 1.73, and libc++. It serves the existing
+`ScrcpyService` protocol and produces decodable 2880×1920 H.264 on the tested PC.
+See [`native/server/README.md`](native/server/README.md). This is still a probe:
+display geometry is fixed, the capture path is change-driven, and one stream is
+supported.
 
 ## Security
 
@@ -239,7 +243,10 @@ server variants reference the same symbol. Immediate workaround:
   `POST /api/connect {"mode":"image"}`): control, layout, screenshot and a
   lower-rate JPEG stream still work (the agent does not use protobuf);
 - request a newer ABI-compatible `libscreen_casting`/SDK asset built for the PC
-  OS from Huawei, then add it as a new variant in `internal/scrcpy`.
+  OS from Huawei, then add it as a new variant in `internal/scrcpy`;
+- or use the self-built static server in [`native/server/`](native/server/README.md)
+  once it is wired into the launcher. The current probe is loaded with a direct
+  `runprobe`; the Go app still pushes the embedded vendor asset.
 
 Do not patch the vendor `.so`: a Go-side change cannot fix a missing device
 system symbol, and vendor assets are licensed third-party binaries.
@@ -265,5 +272,5 @@ internal/session    sessions, input, layout, screenshots, fan-out hub
 internal/webui      HTTP/WS API + embedded UI
 internal/assets/web browser UI (vanilla JS, WebCodecs + jmuxer fallback)
 proto/              scrcpy.proto
-native/             reverse-engineering findings + minimal OHOS extension probe
+native/             loader/signature findings, minimal probe, static server PoC
 ```

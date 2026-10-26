@@ -70,7 +70,7 @@ internal/proto              generated scrcpy proto stubs
 internal/layout             layout JSON parse/bounds/search
 internal/assets/web         vanilla JS UI (WebCodecs + jmuxer fallback)
 proto/scrcpy.proto          source of truth; regenerate with `make proto`
-native/                     reverse-engineering findings and unsigned-extension probe only
+native/                     loader/signature findings, minimal probe, static server PoC
 ```
 
 One `Session` per `server/sn`, multiple WebSocket subscribers per session.
@@ -112,8 +112,8 @@ The Go video path is orchestration, not capture. Exact flow:
 
 The `.so` itself is opaque. Do not add host-side parsing of its internals;
 only the wire protocol is public here. If a new OS version breaks the asset,
-the correct fix is a new **signed** vendor asset plus a variant entry, not a
-Go rewrite.
+the correct fix is a compatible vendor asset (or the self-built static server
+probe in `native/server/`) plus a variant entry, not a Go rewrite.
 
 ## uitest agent path (control/layout/image)
 
@@ -205,11 +205,18 @@ Known timing constraints: variants can take ~10 s each; agent/layout first call
 `native/` is research only:
 
 - `minimal_ext.c` / `build.sh`: OHOS NDK aarch64 extension probe.
+- `dlprobe.c`: direct `dlopen`/`dlsym` probe for the loader ABI.
+- `server/`: unsigned static gRPC/protobuf server probe with public
+  `OH_AVScreenCapture` + `OH_VideoEncoder`; see `server/README.md` for the
+  verified build and the remaining limitations.
 - `README.md`: reverse-engineering analysis, appended Huawei CBG signature evidence, and the
   unsigned/truncated/copied-signature experiments.
 
-Do not present the probe as a working replacement for `libscreen_casting`; it
-cannot load on retail HarmonyOS without Huawei signing.
+Do not present the probe as a working replacement for the vendor
+`libscreen_casting` extension in the Go app; it is a C++ research/prototype
+loaded with a direct runner. The direct loader proves an unsigned self-built
+`.so` can be loaded by the same `dlopen` path, but the full `uitest
+start-daemon` environment and product integration are separate.
 
 ## Licensing
 
