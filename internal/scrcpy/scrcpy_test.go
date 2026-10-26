@@ -1,6 +1,9 @@
 package scrcpy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestVariantsNewSystem(t *testing.T) {
 	vs := VariantsFor("6.0.2.3")
@@ -25,5 +28,15 @@ func TestCmpVersion(t *testing.T) {
 	}
 	if cmpVersion("6.0.2.3", "6.0.2.3") != 0 {
 		t.Fatal("expected equal")
+	}
+}
+
+func TestVideoFailureHint(t *testing.T) {
+	hint := videoFailureHint([]string{"Dlopen /data/local/tmp/x.z.so failed: Error relocating x: _ZN...: symbol not found"})
+	if !strings.Contains(hint, "image mode") || !strings.Contains(hint, "incompatible") {
+		t.Fatalf("unexpected hint: %q", hint)
+	}
+	if got := videoFailureHint([]string{"some other error"}); got != "" {
+		t.Fatalf("unexpected non-empty hint: %q", got)
 	}
 }

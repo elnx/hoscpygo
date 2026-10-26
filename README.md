@@ -199,10 +199,9 @@ extension path on retail HarmonyOS without Huawei signing.
   devices you control.
 - The device `.so` is pushed with an md5 check, but `/data/local/tmp` is
   writable by the device shell. Treat the device as trusted.
-- On macOS the embedded unsigned hdc may be quarantined by Gatekeeper; if it is
-  blocked, run `xattr -d com.apple.quarantine <extracted-hdc>` or use a
-  Developer-ID hdc from DevEco. Windows SmartScreen may warn on unsigned
-  binaries.
+- hdc is resolved from the system. Use a trusted copy (DevEco/OpenHarmony
+  command-line tools) and keep it on `PATH`; the application no longer carries
+  its own copy.
 
 ## Licensing
 
@@ -211,6 +210,33 @@ are third-party/Huawei binaries and are **not** covered by that license; see
 `NOTICE`. hdc is not bundled. If you redistribute this binary, confirm
 that you have the right to redistribute those assets. The safe alternative is
 to load them at runtime from a user-provided official SDK jar.
+
+## Troubleshooting
+
+### HarmonyOS PC 7.0.0.1: `MapFieldBase11SetMapDirty ... symbol not found`
+
+The bundled signed video servers (`server*.z.so`) link against the system
+`libprotobuf.z.so` and import `google::protobuf::internal::MapFieldBase::
+SetMapDirty`. Some HarmonyOS PC builds ship a newer protobuf that no longer
+exports that symbol, so the signed `.so` cannot be relocated:
+
+```
+Dlopen /data/local/tmp/hoscpy_server.z.so failed:
+Error relocating ... _ZN6google8protobuf8internal12MapFieldBase11SetMapDirtyEv:
+symbol not found
+```
+
+This is a device-side ABI mismatch, not a Windows, hdc or Go error. All bundled
+server variants reference the same symbol. Immediate workaround:
+
+- use **image mode** (UI "图片 JPEG", config `"mode": "image"`, or
+  `POST /api/connect {"mode":"image"}`): control, layout, screenshot and a
+  lower-rate JPEG stream still work (the agent does not use protobuf);
+- request a newer signed `libscreen_casting`/SDK asset built for the PC OS from
+  Huawei, then add it as a new variant in `internal/scrcpy`.
+
+Do not patch/re-sign the vendor `.so`: the uitest loader requires a valid Huawei
+CBG signature, and a Go-side change cannot fix a missing device system symbol.
 
 ## Development
 
@@ -225,7 +251,7 @@ Layout:
 
 ```
 cmd/hoscpygo        entrypoint
-internal/assets     embed web/device/hdc assets + extraction
+internal/assets     embed web/device assets (hdc is external)
 internal/hdc        hdc CLI wrapper
 internal/uitest     agent lifecycle, JSON-RPC, layout, JPEG stream
 internal/scrcpy     proto client, server variant selection, H.264 stream

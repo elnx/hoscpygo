@@ -177,7 +177,21 @@ func Start(ctx context.Context, opts Options) (*Stream, error) {
 		slog.Warn("video server variant failed", "sn", opts.SN, "asset", v.Asset, "err", err)
 		errs = append(errs, v.Asset+": "+err.Error())
 	}
-	return nil, fmt.Errorf("all video server variants failed: %s", strings.Join(errs, " | "))
+	return nil, fmt.Errorf("all video server variants failed: %s%s", strings.Join(errs, " | "), videoFailureHint(errs))
+}
+
+// videoFailureHint turns the common device-side loader failure into an
+// actionable message. A signed server .so built against a different system
+// protobuf/grpc ABI cannot be fixed on the Go side.
+func videoFailureHint(errs []string) string {
+	blob := strings.ToLower(strings.Join(errs, "\n"))
+	if strings.Contains(blob, "error relocating") && strings.Contains(blob, "symbol not found") {
+		return " (device-side signed video server is incompatible with this device OS/ABI; use image mode or obtain a newer signed HOScrcpy server asset)"
+	}
+	if strings.Contains(blob, "dlopen") && strings.Contains(blob, "failed") {
+		return " (device-side video server failed to load; check the OS version and signed asset compatibility)"
+	}
+	return ""
 }
 
 func detectUitestVersion(ctx context.Context, h *hdc.Client, server, sn string) string {

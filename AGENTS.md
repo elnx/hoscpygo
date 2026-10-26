@@ -26,7 +26,9 @@ Keep `CGO_ENABLED=0` and one application binary.
    assets.** The HarmonyOS 7 uitest loader requires Huawei CBG code signatures.
    Unsigned/self-built extensions fail silently, including on rooted devices.
    See `native/README.md`; the only supported path is reuse of the signed assets
-   (or a Huawei-signed replacement).
+   (or a Huawei-signed replacement). A missing system symbol such as
+   `MapFieldBase11SetMapDirty` means the asset ABI does not match the device OS:
+   use image mode or update the signed asset; never patch/re-sign the `.so`.
 3. **Do not add CGO or host-side decoders.** H.264/JPEG decode belongs to the
    browser. Keep `CGO_ENABLED=0` in every build target.
 4. **Keep protocol constants exact.** The agent frame magic is `1145141919`,
