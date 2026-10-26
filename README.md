@@ -92,7 +92,7 @@ Two capture paths:
 | | Video | Image |
 |---|---|---|
 | Device asset | `internal/assets/device/server_unix_6.5.z.so` etc. | `agent_1.2.3.so` |
-| Loader | `/system/bin/uitest start-daemon singeness --extension-name hoscpy_server.z.so ...` | `uitest start-daemon singeness --extension-name hoscpy_agent.so` |
+| Loader | `/system/bin/uitest start-daemon singleness --extension-name hoscpy_server.z.so ...` | `uitest start-daemon singleness --extension-name hoscpy_agent.so` |
 | Transport | gRPC over `localabstract:scrcpy_grpc_socket` (or `tcp:5000` for legacy assets) | raw JSON + JPEG on a separate forwarded socket |
 | Protocol | `ScrcpyService/onStart` server stream; `payload["data"].val_bytes` | `Captures.startCaptureScreen` |
 | Rate | encoder rate (static screens send nothing) | change-driven, typically 1–8 fps |

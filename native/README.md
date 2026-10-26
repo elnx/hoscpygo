@@ -4,7 +4,7 @@ This directory documents and probes the device-side `libscreen_casting*.z.so`
 that HOScrcpy pushes to `/data/local/tmp` and loads with:
 
 ```sh
-/system/bin/uitest start-daemon singeness \
+/system/bin/uitest start-daemon singleness \
   --extension-name libscreen_casting.z.so \
   -scale 2 -frameRate 60 -bitRate 8388608 -p 5000 -iFrameInterval 2000
 ```
@@ -90,7 +90,7 @@ whether an unsigned extension is accepted.
 ```sh
 ./native/build.sh
 hdc file send native/build/libhoscpy_test.z.so /data/local/tmp/libhoscpy_test.z.so
-hdc shell "/system/bin/uitest start-daemon singeness \
+hdc shell "/system/bin/uitest start-daemon singleness \
   --extension-name libhoscpy_test.z.so >/dev/null 2>&1 &"
 hdc shell "ls -l /data/local/tmp/hoscpy_probe_*.log"
 ```
