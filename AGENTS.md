@@ -23,9 +23,10 @@ Keep `CGO_ENABLED=0` and one application binary.
    system extension using `OHOS::Rosen` virtual-screen APIs and the native media
    encoder. It is not portable to Go and cannot run in the Go process.
 2. **Treat vendor device assets as signed third-party binaries.** Their files
-   carry an appended Huawei CBG PKCS#7 block, but OpenHarmony source shows `uitest`'s
-   `ExecuteExtension` only calls `dlopen`/`dlsym`/`OnInit`/`OnRun`; no signature
-   verifier is called. Do **not** assume signing is required or is the blocker:
+   carry an appended Huawei CBG PKCS#7 block, but the OpenHarmony
+   `testfwk_arkxtest` source shows `uitest`'s `ExecuteExtension` only calls
+   `dlopen`/`dlsym`/`OnInit`/`OnRun`; no signature verifier is called. Do
+   **not** assume signing is required or is the blocker:
    earlier unsigned/truncated tests were confounded by file mode, the
    `OnInit(void*, int, char**)` ABI, and a daemon that failed before extension
    load. Do not modify/re-sign vendor assets for distribution. A missing system
@@ -217,8 +218,8 @@ Known timing constraints: variants can take ~10 s each; agent/layout first call
 - `server/ohos-src/`: seven pinned OpenHarmony third_party submodules. Only the
   native Make targets initialize/build them; `make dist` uses the embedded
   `server_static.z.so` and does not require submodules.
-- `README.md`: reverse-engineering analysis, appended Huawei CBG signature evidence, and the
-  unsigned/truncated/copied-signature experiments.
+- `README.md`: reverse-engineering findings, appended Huawei CBG signature
+  evidence, and the unsigned/truncated/copied-signature experiments.
 
 The embedded static server is still a prototype: display geometry is fixed to
 the probed PC, capture is change-driven, and one stream is supported. The direct

@@ -188,19 +188,19 @@ Go `image/jpeg` decode ~13 ms for 640×1360.
 
 The vendor server/agent `.so` files **do carry an appended Huawei CBG PKCS#7
 signed-data block** (signer `DevEcoTesting Release`, Huawei CBG Software Signing
-Service CA). However, reverse-engineering analysis of
-`OHOS::uitest::ExecuteExtension` shows the loader only does `dlopen`, `dlsym`,
-`OnInit`, `OnRun`; **it does not call a signature verifier**. We found no
-signature-related strings in the inspected `ld-musl`, but a lower-layer check
-cannot be fully ruled out.
+Service CA). However, the OpenHarmony open-source `testfwk_arkxtest`
+implementation (`uitest/addon/extension_executor.cpp`) shows the loader only
+does `dlopen`, `dlsym`, `OnInit`, `OnRun`; **it does not call a signature
+verifier**. We found no signature-related strings in the inspected `ld-musl`,
+but a lower-layer check cannot be fully ruled out.
 
 An earlier claim that unsigned extensions cannot load was based on tests with
 confounders (file mode `0644` → `Dlopen: Permission denied`, wrong 2-argument
 `OnInit` ABI, and a daemon that logged `StartDaemon: Failed to initialize
 server` before a meaningful extension test). It is therefore **not established**
 that Huawei signing is required by this loader. See
-[`native/README.md`](native/README.md) for the open-source analysis, signature parse,
-and test caveats.
+[`native/README.md`](native/README.md) for the reverse-engineering findings,
+signature parse, and test caveats.
 
 Current scope: Go host + embedded device assets. The self-built C++ server is
 embedded as `server_static.z.so` and is tried first for unix-socket systems. It

@@ -9,7 +9,7 @@ that HOScrcpy pushes to `/data/local/tmp` and loads with:
   -scale 2 -frameRate 60 -bitRate 8388608 -p 5000 -iFrameInterval 2000
 ```
 
-## 1. reverse-engineering analysis of `server_unix_6.5-20260313.z.so`
+## 1. Reverse-engineering analysis of `server_unix_6.5-20260313.z.so`
 
 Relevant exported functions:
 
@@ -26,7 +26,9 @@ Relevant exported functions:
 The gRPC layer is not obfuscated: the proto is the same one reconstructed in
 `../proto/scrcpy.proto`. The hard part is the platform side: Rosen
 virtual-screen system APIs (`ScreenManager::CreateVirtualScreen`) plus the OHOS
-native media encoder, both system APIs rather than public NDK APIs.
+native media encoder, both system APIs rather than public NDK APIs. The
+`uitest` loader behavior below is inferred from the OpenHarmony open-source
+repository.
 
 ## 2. Signature block: present, but not verified by the loader
 
@@ -54,8 +56,9 @@ this as "we verified every signed byte".
 
 ### 2.2 `uitest` itself does not call a verifier
 
-analysis based on the OpenHarmony open-source implementation of `OHOS::uitest::ExecuteExtension` in `/system/bin/uitest`
-shows the complete path:
+The `uitest` loader behavior is inferred from the OpenHarmony open-source
+repository `test/testfwk/arkxtest/uitest/addon/extension_executor.cpp` (project
+`testfwk_arkxtest`). The relevant `ExecuteExtension` flow is:
 
 ```c
 path = "/data/local/tmp/" + extension_name;
@@ -77,9 +80,9 @@ signing. `uitest` has a `NEEDED libsec_shared.z.so`, but `ExecuteExtension` does
 not call it. `/lib/ld-musl-aarch64.so.1` also has no code-signing strings in the
 versions inspected; we have not found a verifier in the loader path.
 
-**Therefore, the current OpenHarmony open-source implementation indicates that the uitest daemon does not
-verify the extension signature.** The signature trailer is present, but the
-previously claimed "signature is required and unsigned .so is rejected" is
+**Therefore, the OpenHarmony open-source implementation indicates that the
+uitest daemon does not verify the extension signature.** The signature trailer is present,
+but the previously claimed "signature is required and unsigned .so is rejected" is
 **not supported** by the loader code.
 
 ### 2.3 Why the earlier unsigned/truncated experiments were inconclusive
@@ -121,7 +124,8 @@ daemon failure remains inconclusive, not a signature result.
 
 The signature trailer's existence is confirmed. Its enforcement by a lower
 layer was not found, and the direct loader is positive evidence that this
-`uitest`/`ld-musl` path does not reject an unsigned file.
+`uitest`/`ld-musl` path does not reject an unsigned file. The `uitest` flow
+above is based on the OpenHarmony open-source implementation.
 
 ### 2.4 The HarmonyOS PC error is unrelated to signing
 

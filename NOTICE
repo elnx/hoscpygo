@@ -31,6 +31,6 @@ by the repository's MIT LICENSE and may have different redistribution terms.
 hdc is not bundled. Install the HarmonyOS/OpenHarmony command-line tools
 separately (hdc is Apache-2.0; its libusb dependency is LGPL-2.1-or-later).
 
-The reverse-engineering protocol descriptions and the original Go/JS code are
-provided for interoperability and research. Huawei trademarks and binaries
+The reverse-engineering findings and the original Go/JS code are provided for
+interoperability and research. Huawei trademarks and binaries
 remain the property of their owners.

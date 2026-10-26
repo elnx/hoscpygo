@@ -378,6 +378,7 @@ this.
 - One active `onStart` stream is supported; audio, recording, and TLS are not.
 - `onRequestIDRFrame` requests an encoder key frame; `onEnd` stops the capture
   pipeline.
-- The `.so` is unsigned. The direct loader and the open-source analyzed `uitest`
-  `ExecuteExtension` require no signature; a valid uitest test-server
-  environment was not available to demonstrate the full daemon path.
+- The `.so` is unsigned. The direct loader and the OpenHarmony
+  `testfwk_arkxtest` `ExecuteExtension` implementation (from the open-source
+  repository) require no signature; a valid uitest test-server environment was
+  not available to demonstrate the full daemon path.
