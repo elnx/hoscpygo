@@ -112,19 +112,17 @@ https://gitee.com/openharmony/<repo>      # mirror
 ```
 
 A full `repo sync` is not required: create `$OHOS/third_party/` and clone only
-the seven projects above into the listed paths, then provide the xDS inputs
-below. Using the exact OpenHarmony revisions avoids mixing incompatible
-protobuf/gRPC branches.
+the seven projects above into the listed paths. Using the exact OpenHarmony
+revisions avoids mixing incompatible protobuf/gRPC branches.
 
-These seven can be added as Git submodules, but do not make them submodules of
-the main Go repository unless native developers are the primary audience:
-submodule initialization downloads ~300 MB of sources, and the xDS inputs need
-either five more pinned trees or a no-xDS CMake build. A separate
-`hoscpy-native-deps` repository, or `build-deps.sh` cloning into the gitignored
-`native/server/deps/src`, keeps `git clone hoscpygo` and `make dist` light. If
-submodules are used here, put them under a dedicated source root and set `OHOS`
-to that root; do not point `OHOS` at this repository and expect the Go tree to
-look like an OpenHarmony checkout.
+These seven can be added as Git submodules. For the current CMake configuration
+(`gRPC_BUILD_CODEGEN=OFF`, `gRPC_DOWNLOAD_ARCHIVES=OFF`) they are sufficient;
+the five xDS source trees are not required. Still consider a separate
+`hoscpy-native-deps` repository instead of submodules in the main Go repository:
+submodule initialization downloads ~300 MB of sources, and normal `git clone
+hoscpygo` / `make dist` do not need them. If submodules are used, put them under
+a dedicated source root and set `OHOS` to that root; do not point `OHOS` at this
+repository and expect the Go tree to look like an OpenHarmony checkout.
 
 `upb`, `utf8_range`, and `address_sorting` are tracked inside the gRPC repo;
 protobuf's host build also uses its bundled `third_party/abseil-cpp` and
@@ -133,33 +131,28 @@ protobuf's host build also uses its bundled `third_party/abseil-cpp` and
 The OHOS NDK/clang/sysroot is a separate DevEco command-line-tools install, not
 part of `$OHOS`.
 
-### gRPC xDS inputs (not in the OpenHarmony gRPC repo)
+### gRPC xDS source trees
 
-gRPC 1.73's CMake builds xDS support and needs five extra source trees. They are
-normally downloaded by gRPC's `gRPC_DOWNLOAD_ARCHIVES` logic and are **not**
-tracked in `third_party_grpc`; a fresh OpenHarmony checkout does not contain
-them. The probe tree had them as untracked directories:
+For this build, the five `third_party/grpc/third_party/{xds,envoy-api,googleapis,opencensus-proto,protoc-gen-validate}` trees are **not required**.
 
-| Path under `third_party/grpc/third_party` | Upstream | Pin used by gRPC |
-|---|---|---|
-| `xds` | `cncf/xds` | `3a472e524827f72d1ad621c4983dd5af54c46776` |
-| `envoy-api` | `envoyproxy/data-plane-api` | `4de3c74cf21a9958c1cf26d8993c55c6e0d28b49` |
-| `googleapis` | `googleapis/googleapis` | `fe8ba054ad4f7eca946c2d14a63c3f07c0b586a0` |
-| `opencensus-proto` | `census-instrumentation/opencensus-proto` | `v0.3.0` |
-| `protoc-gen-validate` | `bufbuild/protoc-gen-validate` | `v1.2.1` |
+`third_party_grpc` already tracks the generated `src/core/ext/upb-gen/...` and
+`src/core/ext/upbdefs-gen/...` xDS sources. Our CMake build uses:
 
-`build-deps.sh` detects missing directories and leaves
-`gRPC_DOWNLOAD_ARCHIVES=ON`, so CMake can fetch them. For an offline build,
-clone those five repos into the paths above at the pinned revisions first. A
-full `repo sync` alone is not sufficient for the xDS headers.
+- `gRPC_BUILD_CODEGEN=OFF`
+- `gRPC_DOWNLOAD_ARCHIVES=OFF`
 
-Note that this is a property of the **CMake** build used by this probe, not of
-OpenHarmony itself. OpenHarmony's `third_party/grpc/BUILD.gn` defaults
-`grpc_enable_profiler_minimal=true`, which defines `GRPC_NO_XDS` and filters the
-xDS source files out; its GN build does not reference these five directories.
-The CMake build here does not use that GN configuration, so it compiles full
-xDS and needs them. Moving this build to a `GRPC_NO_XDS` CMake configuration,
-or driving the OpenHarmony GN build, would remove this extra dependency.
+With those options, a clean OpenHarmony gRPC checkout builds `grpc++` without
+those five directories; this was verified in a clean worktree. gRPC's default
+CMake behavior (`gRPC_DOWNLOAD_ARCHIVES=ON`) downloads them for xDS code
+generation/tests, which is why they appeared as untracked directories in the
+probe tree. Do not enable downloads unless you need full xDS regeneration.
+
+Defining `GRPC_NO_XDS` also compiles and links, but it only disables xDS
+registration paths; it does not remove the xDS source files from the CMake
+compile list. OpenHarmony's GN build gets the stronger behavior: default
+`grpc_enable_profiler_minimal=true` defines `GRPC_NO_XDS` and filters the xDS
+sources. Implementing that filtering in CMake is optional if a smaller binary
+or a no-xDS build is required; it is not needed for the seven source repos.
 
 ### Configure commands
 

@@ -113,18 +113,10 @@ mkdir -p "$DIR/gen"
   --cpp_out="$DIR/gen" "$DIR/../../proto/scrcpy.proto"
 
 echo "==> gRPC"
-# gRPC's CMake needs xDS/googleapis/envoy API sources. They are not tracked by
-# the OpenHarmony third_party_grpc repo; let gRPC download only if they are
-# absent. Set GRPC_DOWNLOAD_ARCHIVES=ON in an offline tree after provisioning
-# those directories manually.
-GRPC_DOWNLOAD_ARCHIVES=OFF
-for dep in xds envoy-api googleapis opencensus-proto protoc-gen-validate; do
-  if [ ! -d "$OHOS/third_party/grpc/third_party/$dep" ]; then
-    GRPC_DOWNLOAD_ARCHIVES=ON
-  fi
-done
-[ "$GRPC_DOWNLOAD_ARCHIVES" = ON ] && \
-  echo "    missing gRPC xDS sources; enabling CMake archive downloads"
+# The OpenHarmony gRPC repo tracks the generated xDS/upb sources. Our build
+# disables code generation and archives, so the separate xds/envoy/googleapis
+# source trees are not needed. Keep downloads off for a deterministic offline
+# dependency set.
 THD="$OHOS/third_party/grpc/src/core/util/posix/thd.cc"
 if ! grep -q '__OHOS__' "$THD"; then
   patch -d "$OHOS/third_party/grpc" -p1 \
@@ -137,7 +129,7 @@ cmake -S "$OHOS/third_party/grpc" -B "$BUILD/grpc-build" -G Ninja \
   -DCMAKE_FIND_ROOT_PATH="$PREFIX;$OHOS_NDK/sysroot" \
   -DgRPC_BUILD_TESTS=OFF -DgRPC_BUILD_CODEGEN=OFF \
   -DgRPC_BUILD_CSHARP_EXT=OFF -DgRPC_INSTALL=OFF -DBUILD_SHARED_LIBS=OFF \
-  -DgRPC_DOWNLOAD_ARCHIVES="$GRPC_DOWNLOAD_ARCHIVES" -DgRPC_USE_SYSTEMD=OFF \
+  -DgRPC_DOWNLOAD_ARCHIVES=OFF -DgRPC_USE_SYSTEMD=OFF \
   -DgRPC_ABSL_PROVIDER=package -DgRPC_CARES_PROVIDER=package \
   -DgRPC_RE2_PROVIDER=package -DgRPC_SSL_PROVIDER=package \
   -DgRPC_ZLIB_PROVIDER=package -DgRPC_PROTOBUF_PROVIDER=package \
