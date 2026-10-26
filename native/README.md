@@ -197,3 +197,43 @@ hard-coded to the probed PC, the capture path is change-driven, one stream is
 supported, and the full `uitest start-daemon` path needs a valid
 test-server/apiCaller environment. The open-source `OpenHarmony_Scrcpy` server
 remains a useful reference for capture/encoder details.
+
+## 5. XPM and ELF code signing
+
+OpenHarmony's XPM (`eXecutable Permission Manager`) is implemented in the
+kernel module `kernel/linux/common_modules/xpm` (`CONFIG_SECURITY_XPM`), with
+supporting checks in `third_party/musl/ldso/linux/dynlink.c`. It validates code
+signature information before allowing a file mapping to become executable.
+SELinux domain policy (for example `exec_no_sign`/`execmem_anon`) determines
+which process domains are checked.
+
+Practical findings from the H7 test device:
+
+- The unsigned self-built `server_static.z.so` is rejected in the `uitest`
+  domain with `Xpm check failed` / `Permission denied`.
+- Huawei-signed vendor `server_unix_6.5.z.so` passes that check and starts its
+  gRPC socket. A later failure (`no video frame`) is a separate screen/codec
+  issue, not an XPM failure. `6.3.1` fails earlier on a missing Rosen
+  `DestroyVirtualScreen` symbol.
+- The vendor signature is **not** the OpenHarmony ELF signature format:
+  `binary-sign-tool display-sign -inFile server_unix_6.5.z.so` reports
+  `code signature is not found`. Its appended PKCS#7 block is a
+  Huawei/HarmonyOS signing container, not the signature produced by
+  `binary-sign-tool`.
+- `binary-sign-tool` can sign standard ELF files:
+
+  ```sh
+  binary-sign-tool sign -inFile unsigned.so -outFile signed.so -selfSign 1
+  binary-sign-tool display-sign -inFile signed.so
+  ```
+
+  It adds a `.codesign` section. A self-signed build loads under a direct
+  root probe, but on the tested H7 it is still rejected when loaded inside the
+  `uitest` domain. A certificate-signed ELF with a certificate trusted by the
+  device/XPM policy (or a Huawei vendor signature) is required there.
+- `ohosign` is not the ELF signing tool in this SDK; use `binary-sign-tool`
+  (`binary-sign-tool.jar` on Java platforms). It cannot reproduce the Huawei
+  vendor signature without Huawei's private key and certificate chain.
+
+For this H7, use image mode when video is blocked by XPM; the image path was
+verified streaming on the same device.
