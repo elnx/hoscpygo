@@ -27,6 +27,10 @@ PREFIX=${PREFIX:-"$BUILD/prefix"}
 case "$PREFIX" in /*) ;; *) PREFIX="$ROOT/$PREFIX" ;; esac
 JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}
 TOOLCHAIN="$DIR/toolchain.cmake"
+# The server only uses insecure gRPC transport. Disable xDS registration and
+# let --gc-sections drop the unused xDS code; this substantially reduces the
+# final static server.
+GRPC_COMPILE_FLAGS="--target=aarch64-linux-ohos --sysroot=$OHOS_NDK/sysroot -fPIC -DGRPC_NO_XDS -ffunction-sections -fdata-sections"
 
 for src in "$OHOS/third_party/abseil-cpp" "$OHOS/third_party/zlib" \
            "$OHOS/third_party/cares" "$OHOS/third_party/re2" \
@@ -139,6 +143,8 @@ fi
 cmake -S "$OHOS/third_party/grpc" -B "$BUILD/grpc-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_CXX_STANDARD=17 \
+  -DCMAKE_C_FLAGS="$GRPC_COMPILE_FLAGS" \
+  -DCMAKE_CXX_FLAGS="$GRPC_COMPILE_FLAGS" \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
   -DCMAKE_FIND_ROOT_PATH="$PREFIX;$OHOS_NDK/sysroot" \
   -DgRPC_BUILD_TESTS=OFF -DgRPC_BUILD_CODEGEN=OFF \

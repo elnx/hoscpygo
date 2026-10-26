@@ -84,11 +84,10 @@ buffer is full).
 The Go video path is orchestration, not capture. Exact flow:
 
 1. `/system/bin/uitest --version` is read.
-2. `scrcpy.VariantsFor` selects the asset family:
-   - `> 6.0.2.1`: `server_unix_6.5` → `6.4` → `6.3.1`
+2. `scrcpy.VariantsFor` supports current H7/uitest systems only:
+   - `server_static.z.so` first, then `server_unix_6.5.z.so` fallback
      (abstract socket `scrcpy_grpc_socket`)
-   - `<= 6.0.2.1`: `server_5.10` → `server3` → `server2` → `server1`
-     (TCP `:5000`)
+   - legacy TCP and old unix server assets are not embedded
 3. Kill any existing `hoscpy_server.z.so` process.
 4. Extract the embedded asset to the host cache; compare md5 with
    `/data/local/tmp/hoscpy_server.z.so`; if different, `rm -f` remote then
@@ -98,9 +97,8 @@ The Go video path is orchestration, not capture. Exact flow:
    `/system/bin/uitest start-daemon singleness --extension-name hoscpy_server.z.so -scale S -frameRate F -bitRate B -p 5000 -iFrameInterval I`
    (`hdc.StartBackground` redirects stdout/stderr and appends `&`).
 7. Wait for the process (`ps -ef`), then wait for the abstract socket in
-   `/proc/net/unix` (or TCP `:5000` for legacy assets).
-8. Allocate a host port and `hdc fport tcp:P localabstract:scrcpy_grpc_socket`
-   (or `tcp:P tcp:5000`).
+   `/proc/net/unix`.
+8. Allocate a host port and `hdc fport tcp:P localabstract:scrcpy_grpc_socket`.
 9. gRPC plaintext to `host:P`, max recv 100 MiB:
    `ScrcpyService/onStart`, read `ReplyMessage.payload["data"].val_bytes`
    (Annex-B H.264). The service has no audio.
@@ -118,8 +116,9 @@ probe in `native/server/`) plus a variant entry, not a Go rewrite.
 
 ## uitest agent path (control/layout/image)
 
-- Agent asset selected by `uitest --version`/x86 (`uitest.chooseAgent`), pushed
-  as `/data/local/tmp/hoscpy_agent.so` (fallback `agent.so`).
+- Agent asset is always `agent_1.2.3.so` (`uitest.chooseAgent`), pushed as
+  `/data/local/tmp/hoscpy_agent.so` (fallback `agent.so`). Old/x86 agents are
+  not embedded.
 - Start detached with `--extension-name hoscpy_agent.so`; wait for
   `@uitest_socket` before creating three fports (control/layout/capture).
 - Control socket: raw JSON, no framing.

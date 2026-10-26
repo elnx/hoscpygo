@@ -47,75 +47,15 @@ type Variant struct {
 	Unix  bool
 }
 
-// VariantsFor selects the server family from the device uitest version.
-//
-// Asset names are normalized from the vendor's dated filenames, e.g.
-// libscrcpy_server_unix_6.5-20260313.z.so -> server_unix_6.5.z.so, so the
-// selection table and cache keys stay stable across SDK rebuilds. Use the MD5
-// in native/README.md / git history for provenance.
-func VariantsFor(uitestVersion string) []Variant {
-	unixSet := []Variant{
-		// Self-built probe: public OH_AVScreenCapture + static protobuf/gRPC.
-		// It is tried first because the vendor 6.x assets fail relocation on
-		// HarmonyOS PC builds whose system libprotobuf no longer exports
-		// MapFieldBase::SetMapDirty. If it cannot start on another device,
-		// startVariant falls through to the vendor assets below.
+// VariantsFor returns the supported device servers. The self-built static
+// server is primary; server_unix_6.5 is kept as the vendor fallback for current
+// H7/uitest systems. Legacy TCP servers and older unix server variants are no
+// longer shipped.
+func VariantsFor(_ string) []Variant {
+	return []Variant{
 		{Asset: "server_static.z.so", Unix: true},
 		{Asset: "server_unix_6.5.z.so", Unix: true},
-		{Asset: "server_unix_6.4.z.so", Unix: true},
-		{Asset: "server_unix_6.3.1.z.so", Unix: true},
 	}
-	legacySet := []Variant{
-		{Asset: "server_5.10.z.so", Unix: false},
-		{Asset: "server3.z.so", Unix: false},
-		{Asset: "server2.z.so", Unix: false},
-		{Asset: "server1.z.so", Unix: false},
-	}
-	if uitestVersion == "" {
-		return append(unixSet, legacySet...)
-	}
-	if cmpVersion(uitestVersion, "6.0.2.1") > 0 {
-		return append(unixSet, legacySet...)
-	}
-	return append(legacySet, unixSet...)
-}
-
-func cmpVersion(a, b string) int {
-	pa, pb := parseVersion(a), parseVersion(b)
-	n := len(pa)
-	if len(pb) > n {
-		n = len(pb)
-	}
-	for i := 0; i < n; i++ {
-		x, y := 0, 0
-		if i < len(pa) {
-			x = pa[i]
-		}
-		if i < len(pb) {
-			y = pb[i]
-		}
-		if x > y {
-			return 1
-		}
-		if x < y {
-			return -1
-		}
-	}
-	return 0
-}
-
-func parseVersion(s string) []int {
-	raw := versionRe.FindString(s)
-	if raw == "" {
-		return nil
-	}
-	parts := strings.Split(raw, ".")
-	out := make([]int, 0, len(parts))
-	for _, p := range parts {
-		v, _ := strconv.Atoi(p)
-		out = append(out, v)
-	}
-	return out
 }
 
 // Options configures one video session.

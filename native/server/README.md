@@ -18,7 +18,7 @@ It was verified on the HarmonyOS PC `<serial>` (API 26, 2880x1920).
 Build output:
 
 ```
-hoscpy_server.z.so   ~28 MB
+hoscpy_server.z.so   ~19 MB unstripped; ~10 MB stripped asset
 NEEDED: libnative_avscreen_capture.so
         libnative_media_venc.so
         libnative_media_codecbase.so
@@ -140,6 +140,10 @@ protobuf's host build also uses its bundled `third_party/abseil-cpp` and
 
 The OHOS NDK/clang/sysroot is a separate DevEco command-line-tools install, not
 part of `$OHOS`.
+
+gRPC is built with `GRPC_NO_XDS`, function/data sections, and a final
+`--gc-sections` link. This drops unused xDS registration code from the stripped
+server (about 16.3 MiB to 9.5 MiB) without needing the external xDS trees.
 
 ### gRPC xDS source trees
 
@@ -269,6 +273,8 @@ The patch changes the guard from `#ifndef GPR_ANDROID` to
 cmake -S "$OHOS/third_party/grpc" -B "$BUILD/grpc-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_CXX_STANDARD=17 \
+  -DCMAKE_C_FLAGS="--target=aarch64-linux-ohos --sysroot=$OHOS_NDK/sysroot -fPIC -DGRPC_NO_XDS -ffunction-sections -fdata-sections" \
+  -DCMAKE_CXX_FLAGS="--target=aarch64-linux-ohos --sysroot=$OHOS_NDK/sysroot -fPIC -DGRPC_NO_XDS -ffunction-sections -fdata-sections" \
   -DCMAKE_PREFIX_PATH="$PREFIX" -DCMAKE_FIND_ROOT_PATH="$PREFIX;$OHOS_NDK/sysroot" \
   -DgRPC_BUILD_TESTS=OFF -DgRPC_BUILD_CODEGEN=OFF \
   -DgRPC_BUILD_CSHARP_EXT=OFF -DgRPC_INSTALL=OFF -DBUILD_SHARED_LIBS=OFF \
@@ -298,7 +304,7 @@ The verified, stripped build is checked in as:
 
 ```
 internal/assets/device/server_static.z.so
-MD5 1cea8a2faf59e3af6791b47b22e313f3
+MD5 4e57eba3fd2773e08684cacc69e13eb7
 ```
 
 `VariantsFor` tries `server_static.z.so` before the vendor `server_unix_*`

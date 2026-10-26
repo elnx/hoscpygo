@@ -104,9 +104,9 @@ Two capture paths:
 
 | | Video | Image |
 |---|---|---|
-| Device asset | `internal/assets/device/server_unix_6.5.z.so` etc. | `agent_1.2.3.so` |
+| Device asset | `internal/assets/device/server_static.z.so` (fallback `server_unix_6.5.z.so`) | `agent_1.2.3.so` |
 | Loader | `/system/bin/uitest start-daemon singleness --extension-name hoscpy_server.z.so ...` | `uitest start-daemon singleness --extension-name hoscpy_agent.so` |
-| Transport | gRPC over `localabstract:scrcpy_grpc_socket` (or `tcp:5000` for legacy assets) | raw JSON + JPEG on a separate forwarded socket |
+| Transport | gRPC over `localabstract:scrcpy_grpc_socket` | raw JSON + JPEG on a separate forwarded socket |
 | Protocol | `ScrcpyService/onStart` server stream; `payload["data"].val_bytes` | `Captures.startCaptureScreen` |
 | Rate | encoder rate (static screens send nothing) | change-driven, typically 1–8 fps |
 | Host decode | browser (WebCodecs/MSE) | browser `createImageBitmap` |
@@ -139,14 +139,15 @@ service ScrcpyService {
 }
 ```
 
-Device server variants are selected from `uitest --version`:
+Device server support is now limited to current H7/uitest systems:
 
 | uitest version | assets |
 |---|---|
-| > 6.0.2.1 | `server_unix_6.5` → `6.4` → `6.3.1` (abstract socket) |
-| ≤ 6.0.2.1 | `server_5.10` → `server3` → `server2` → `server1` (TCP :5000) |
+| > 6.0.2.1 | `server_static` → `server_unix_6.5` fallback (abstract socket) |
+| ≤ 6.0.2.1 | no video server; image mode remains available |
 
-The uitest agent is selected similarly (`agent_1.2.3` for H7). Agent frames use:
+Legacy TCP servers and old/x86 agents have been removed from the embedded
+assets. `agent_1.2.3` is the only embedded uitest agent. Agent frames use:
 
 ```
 "_uitestkit_rpc_message_head_" + uint32(1145141919) + uint32(len) + body +

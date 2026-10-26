@@ -1,7 +1,11 @@
 # Cross-compile for aarch64 OpenHarmony with the public NDK.
 # Set OHOS_NDK to the .../openharmony/native directory, for example:
 #   export OHOS_NDK=$HOME/command-line-tools/sdk/default/openharmony/native
-set(OHOS_NDK "$ENV{OHOS_NDK}" CACHE PATH "OpenHarmony native SDK")
+if(DEFINED ENV{OHOS_NDK} AND NOT "$ENV{OHOS_NDK}" STREQUAL "")
+  set(OHOS_NDK "$ENV{OHOS_NDK}" CACHE PATH "OpenHarmony native SDK" FORCE)
+else()
+  set(OHOS_NDK "" CACHE PATH "OpenHarmony native SDK")
+endif()
 if(NOT OHOS_NDK)
   message(FATAL_ERROR "OHOS_NDK is not set; point it at the OpenHarmony native SDK (the directory containing llvm/ and sysroot/)")
 endif()

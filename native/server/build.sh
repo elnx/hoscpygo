@@ -26,6 +26,7 @@ JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}
 
 cmake -S "$DIR" -B "$BUILD" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$DIR/toolchain.cmake" \
+  -DOHOS_NDK="$OHOS_NDK" \
   -DCMAKE_BUILD_TYPE=Release \
   -DOHOS_DEPS="$OHOS_DEPS" \
   -DOHOS_GRPC_BUILD="$OHOS_GRPC_BUILD" \

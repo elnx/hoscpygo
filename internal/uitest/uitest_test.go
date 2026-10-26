@@ -27,23 +27,9 @@ func TestParseFrame(t *testing.T) {
 }
 
 func TestChooseAgent(t *testing.T) {
-	cases := []struct {
-		ver      string
-		x86      bool
-		asset    string
-		abstract bool
-	}{
-		{"6.0.2.3", false, "agent_1.2.3.so", true},
-		{"6.0.2.0", false, "agent_1.1.12.so", false},
-		{"5.1.1.3", false, "agent_1.1.5.so", false},
-		{"5.1.1.2", false, "agent_1.1.3.so", false},
-		{"6.0.2.3", true, "agent_x86_1.1.9.so", false},
-	}
-	for _, c := range cases {
-		asset, _, abstract := chooseAgent(c.ver, c.x86)
-		if asset != c.asset || abstract != c.abstract {
-			t.Fatalf("chooseAgent(%s,%v)=(%s,%v) want (%s,%v)", c.ver, c.x86, asset, abstract, c.asset, c.abstract)
-		}
+	asset, version, abstract := chooseAgent()
+	if asset != "agent_1.2.3.so" || version != "1.2.3" || !abstract {
+		t.Fatalf("chooseAgent()=(%s,%s,%v)", asset, version, abstract)
 	}
 }
 

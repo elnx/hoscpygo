@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -135,8 +134,8 @@ func (c *Client) Ensure(ctx context.Context) error {
 }
 
 func (c *Client) ensureAgent(ctx context.Context) error {
-	uitestVer, isX86 := c.detectUitest(ctx)
-	assetName, agentVer, abstract := chooseAgent(uitestVer, isX86)
+	uitestVer := c.detectUitest(ctx)
+	assetName, agentVer, abstract := chooseAgent()
 	c.Version = agentVer
 	c.Abstract = abstract
 	slog.Info("uitest agent", "sn", c.SN, "uitest", uitestVer, "agent", assetName, "abstract", abstract)
@@ -188,74 +187,18 @@ func (c *Client) ensureAgent(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) detectUitest(ctx context.Context) (string, bool) {
+func (c *Client) detectUitest(ctx context.Context) string {
 	ver := ""
 	if out, err := c.HDC.Shell(ctx, c.Server, c.SN, "/system/bin/uitest --version", 6*time.Second); err == nil {
 		if m := versionRe.FindAllString(out, -1); len(m) > 0 {
 			ver = m[len(m)-1]
 		}
 	}
-	x86 := false
-	if out, err := c.HDC.Shell(ctx, c.Server, c.SN, "file /system/bin/uitest", 5*time.Second); err == nil {
-		x86 = strings.Contains(out, "x86_64")
-	}
-	return ver, x86
+	return ver
 }
 
-func chooseAgent(uitestVer string, x86 bool) (asset, version string, abstract bool) {
-	if x86 {
-		return "agent_x86_1.1.9.so", "1.1.9", false
-	}
-	switch {
-	case uitestVer == "":
-		return "agent_1.2.3.so", "1.2.3", true
-	case cmpVersion("5.1.1.2", uitestVer) >= 0:
-		return "agent_1.1.3.so", "1.1.3", false
-	case cmpVersion("5.1.1.3", uitestVer) == 0:
-		return "agent_1.1.5.so", "1.1.5", false
-	case cmpVersion("6.0.2.1", uitestVer) >= 0:
-		return "agent_1.1.12.so", "1.1.12", false
-	default:
-		return "agent_1.2.3.so", "1.2.3", true
-	}
-}
-
-func cmpVersion(a, b string) int {
-	pa, pb := parseVersion(a), parseVersion(b)
-	n := len(pa)
-	if len(pb) > n {
-		n = len(pb)
-	}
-	for i := 0; i < n; i++ {
-		x, y := 0, 0
-		if i < len(pa) {
-			x = pa[i]
-		}
-		if i < len(pb) {
-			y = pb[i]
-		}
-		if x > y {
-			return 1
-		}
-		if x < y {
-			return -1
-		}
-	}
-	return 0
-}
-
-func parseVersion(s string) []int {
-	raw := versionRe.FindString(s)
-	if raw == "" {
-		return nil
-	}
-	parts := strings.Split(raw, ".")
-	out := make([]int, 0, len(parts))
-	for _, p := range parts {
-		v, _ := strconv.Atoi(p)
-		out = append(out, v)
-	}
-	return out
+func chooseAgent() (asset, version string, abstract bool) {
+	return "agent_1.2.3.so", "1.2.3", true
 }
 
 func writeCacheAsset(name string, data []byte) (string, error) {
