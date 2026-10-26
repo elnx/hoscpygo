@@ -66,20 +66,30 @@ msg 2 type=1 len=635 nals=[nal1]
 
 ## Static dependencies
 
-The dependency prefixes are not committed. They are built from the OpenHarmony
-source tree; the paths below are supplied by environment variables, not baked
-into the scripts.
+The seven OpenHarmony source components are pinned as Git submodules under
+`native/server/ohos-src/`. Dependency install prefixes are not committed; they
+are built under `native/server/deps/` (gitignored).
 
-Convenience script (builds every dependency, regenerates the protocol, patches
-gRPC for OHOS, then builds the server):
+One-command rebuild from the Go repo root:
 
 ```sh
-export OHOS=/path/to/openharmony
+export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
+make dist-native
+```
+
+`make dist-native` runs `git submodule update --init`, builds the static
+dependencies, regenerates the protocol, applies the temporary OHOS patch to
+gRPC, builds the server, strips/embeds it, and then runs `make dist`. The direct
+script equivalent is:
+
+```sh
+git submodule update --init
+export OHOS="$PWD/native/server/ohos-src"
 export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
 ./native/server/build-deps.sh
 ```
 
-It defaults to `native/server/deps/` (gitignored) and leaves the result at
+It defaults to `native/server/deps/` and leaves the result at
 `native/server/deps/server-build/hoscpy_server.z.so`. Set `BUILD` to use a
 different tree. The detailed commands below are the same steps, for auditing
 or manual use.
@@ -115,14 +125,14 @@ A full `repo sync` is not required: create `$OHOS/third_party/` and clone only
 the seven projects above into the listed paths. Using the exact OpenHarmony
 revisions avoids mixing incompatible protobuf/gRPC branches.
 
-These seven can be added as Git submodules. For the current CMake configuration
+These seven are pinned as submodules at
+`native/server/ohos-src/third_party/`. For the current CMake configuration
 (`gRPC_BUILD_CODEGEN=OFF`, `gRPC_DOWNLOAD_ARCHIVES=OFF`) they are sufficient;
-the five xDS source trees are not required. Still consider a separate
-`hoscpy-native-deps` repository instead of submodules in the main Go repository:
-submodule initialization downloads ~300 MB of sources, and normal `git clone
-hoscpygo` / `make dist` do not need them. If submodules are used, put them under
-a dedicated source root and set `OHOS` to that root; do not point `OHOS` at this
-repository and expect the Go tree to look like an OpenHarmony checkout.
+the five xDS source trees are not required. `make dist-native` initializes the
+submodules. Normal `git clone hoscpygo` and `make dist` do not need them, since
+`server_static.z.so` is already embedded. If you use an external dependency
+tree instead, set `OHOS` to that root; do not point `OHOS` at this repository
+and expect the Go tree to look like an OpenHarmony checkout.
 
 `upb`, `utf8_range`, and `address_sorting` are tracked inside the gRPC repo;
 protobuf's host build also uses its bundled `third_party/abseil-cpp` and

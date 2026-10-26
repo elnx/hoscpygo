@@ -214,6 +214,9 @@ Known timing constraints: variants can take ~10 s each; agent/layout first call
   `OH_AVScreenCapture` + `OH_VideoEncoder`; its stripped build is embedded as
   `internal/assets/device/server_static.z.so` and selected first on unix-socket
   devices. See `server/README.md` for the verified build and limitations.
+- `server/ohos-src/`: seven pinned OpenHarmony third_party submodules. Only the
+  native Make targets initialize/build them; `make dist` uses the embedded
+  `server_static.z.so` and does not require submodules.
 - `README.md`: reverse-engineering analysis, appended Huawei CBG signature evidence, and the
   unsigned/truncated/copied-signature experiments.
 

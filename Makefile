@@ -3,7 +3,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 BIN := hoscpygo
 
 .PHONY: all build run test vet fmt proto dist clean linux darwin windows \
-	native-deps native-server native-asset dist-native
+	native-src native-deps native-server native-asset dist-native
 
 all: build
 
@@ -27,22 +27,32 @@ proto:
 
 dist: linux darwin windows
 
-# Native targets are optional and POSIX-only (Linux, macOS, WSL). They need a
-# full OpenHarmony source tree plus the OHOS NDK; ordinary Go users do not need
-# them because server_static.z.so is embedded.
+# Native targets are optional and POSIX-only (Linux, macOS, WSL). The OpenHarmony
+# third_party components are pinned as submodules under NATIVE_SRC; ordinary Go
+# users do not need them because server_static.z.so is embedded.
 #
-#   make native-deps   # build absl/protobuf/gRPC/... + server (slow)
+#   make native-src    # initialize/update the pinned OpenHarmony submodules
+#   make native-deps   # build absl/protobuf/gRPC/... + server (incremental)
 #   make native-server # rebuild the server against existing native deps
 #   make native-asset  # strip + copy the server into internal/assets/device/
-#   make dist-native   # one-shot: deps + asset + all Go dist binaries
+#   make dist-native   # one-shot: submodules + deps + asset + all Go dist binaries
+#
+# native-deps/native-server are intentionally phony: CMake/Ninja does the real
+# incremental dependency tracking, so C++ and gRPC-submodule changes are
+# recompiled by make dist-native without a separate Make timestamp database.
+OHOS ?= native/server/ohos-src
 NATIVE_BUILD ?= native/server/build
 NATIVE_ASSET ?= internal/assets/device/server_static.z.so
 NATIVE_STRIP ?= $(if $(OHOS_NDK),$(OHOS_NDK)/llvm/bin/llvm-strip,llvm-strip)
+NATIVE_SUBMODULES := $(shell git config -f .gitmodules --get-regexp '^submodule\..*\.path$$' 2>/dev/null | cut -d' ' -f2)
 
-native-deps:
-	./native/server/build-deps.sh
+native-src:
+	git submodule update --init -- $(NATIVE_SUBMODULES)
 
-native-server:
+native-deps: native-src
+	OHOS="$(OHOS)" ./native/server/build-deps.sh
+
+native-server: native-src
 	BUILD=$(NATIVE_BUILD) ./native/server/build.sh
 
 native-asset: native-server

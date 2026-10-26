@@ -16,11 +16,15 @@
 set -eu
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(pwd)
 : "${OHOS:?set OHOS to the full OpenHarmony source tree}"
 : "${OHOS_NDK:?set OHOS_NDK to the OpenHarmony native SDK}"
 export OHOS_NDK
+case "$OHOS" in /*) ;; *) OHOS="$ROOT/$OHOS" ;; esac
 BUILD=${BUILD:-"$DIR/deps"}
+case "$BUILD" in /*) ;; *) BUILD="$ROOT/$BUILD" ;; esac
 PREFIX=${PREFIX:-"$BUILD/prefix"}
+case "$PREFIX" in /*) ;; *) PREFIX="$ROOT/$PREFIX" ;; esac
 JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}
 TOOLCHAIN="$DIR/toolchain.cmake"
 
@@ -118,9 +122,19 @@ echo "==> gRPC"
 # source trees are not needed. Keep downloads off for a deterministic offline
 # dependency set.
 THD="$OHOS/third_party/grpc/src/core/util/posix/thd.cc"
+PATCHED_GRPC=0
+restore_grpc_patch() {
+  if [ "$PATCHED_GRPC" = 1 ]; then
+    patch -R -d "$OHOS/third_party/grpc" -p1 \
+      < "$DIR/patches/grpc-ohos-pthread-cancel.patch" || true
+    PATCHED_GRPC=0
+  fi
+}
+trap restore_grpc_patch EXIT
 if ! grep -q '__OHOS__' "$THD"; then
   patch -d "$OHOS/third_party/grpc" -p1 \
     < "$DIR/patches/grpc-ohos-pthread-cancel.patch"
+  PATCHED_GRPC=1
 fi
 cmake -S "$OHOS/third_party/grpc" -B "$BUILD/grpc-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
@@ -156,6 +170,9 @@ OHOS_DEPS="$PREFIX" OHOS_GRPC_BUILD="$BUILD/grpc-build" \
 OHOS_GRPC_INCLUDE="$OHOS/third_party/grpc/include" \
 BUILD="${SERVER_BUILD:-$BUILD/server-build}" JOBS="$JOBS" \
   "$DIR/build.sh"
+
+restore_grpc_patch
+trap - EXIT
 
 cat <<EOF
 

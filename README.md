@@ -280,16 +280,23 @@ Native server targets are optional and POSIX-only (Linux/macOS/WSL):
 # ordinary Go release; embeds the checked-in server_static.z.so
 make dist
 
-# rebuild the native dependency chain + server, strip/embed it, then make dist
-export OHOS=/path/to/openharmony
+# one-shot native rebuild + all Go dist binaries
 export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
-make dist-native
+make dist-native     # initializes submodules, builds deps/server, embeds asset
 
 # or individually
+make native-src      # git submodule update --init for the pinned OHOS sources
 make native-deps     # static absl/protobuf/gRPC/... and server
 make native-server   # rebuild only the extension against existing deps
 make native-asset    # strip + copy into internal/assets/device/
 ```
+
+The seven OpenHarmony source components are pinned as submodules under
+`native/server/ohos-src/`; a normal `git clone` and `make dist` do not require
+initializing them. `make dist-native` runs the submodule update itself.
+`make native-deps` / `native-server` are intentionally phony so CMake/Ninja
+recompiles changed C++ or gRPC-submodule sources. To use an external OHOS tree
+instead of the submodules: `make dist-native OHOS=/path/to/openharmony`.
 
 `make dist` does not need the OHOS toolchain. `make dist-native` does, and is
 documented in [`native/server/README.md`](native/server/README.md).

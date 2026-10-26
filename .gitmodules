@@ -1,0 +1,21 @@
+[submodule "native/server/ohos-src/third_party/abseil-cpp"]
+	path = native/server/ohos-src/third_party/abseil-cpp
+	url = https://gitcode.com/openharmony/third_party_abseil-cpp
+[submodule "native/server/ohos-src/third_party/zlib"]
+	path = native/server/ohos-src/third_party/zlib
+	url = https://gitcode.com/openharmony/third_party_zlib
+[submodule "native/server/ohos-src/third_party/cares"]
+	path = native/server/ohos-src/third_party/cares
+	url = https://gitcode.com/openharmony/third_party_cares
+[submodule "native/server/ohos-src/third_party/re2"]
+	path = native/server/ohos-src/third_party/re2
+	url = https://gitcode.com/openharmony/third_party_re2
+[submodule "native/server/ohos-src/third_party/openssl"]
+	path = native/server/ohos-src/third_party/openssl
+	url = https://gitcode.com/openharmony/third_party_openssl
+[submodule "native/server/ohos-src/third_party/protobuf"]
+	path = native/server/ohos-src/third_party/protobuf
+	url = https://gitcode.com/openharmony/third_party_protobuf
+[submodule "native/server/ohos-src/third_party/grpc"]
+	path = native/server/ohos-src/third_party/grpc
+	url = https://gitcode.com/openharmony/third_party_grpc
