@@ -13,8 +13,9 @@ devices from a browser. The Go process is the host only:
   consumed over gRPC
 - decoding/rendering: the browser (WebCodecs, MSE/jmuxer fallback)
 
-There is **no** CGO, JVM, JavaCV, FFmpeg, npm, or CDN at runtime. All runtime
-assets are in `embed.FS` and must remain that way (`CGO_ENABLED=0`, one binary).
+There is **no** CGO, JVM, JavaCV, FFmpeg, npm, or CDN at runtime. The web UI and
+device-side assets are in `embed.FS`; hdc is an external host prerequisite.
+Keep `CGO_ENABLED=0` and one application binary.
 
 ## Golden rules
 
@@ -42,9 +43,9 @@ assets are in `embed.FS` and must remain that way (`CGO_ENABLED=0`, one binary).
 8. **No secrets, no hidden network calls.** The UI is fully embedded; do not add
    CDN/external asset URLs. The server binds localhost by default and has no
    authentication.
-9. **Embed only the current target's hdc.** `internal/assets/hdc_<goos>_<arch>.go`
-   has a build-tagged `//go:embed` for one hdc directory. Never reintroduce a
-   blanket `//go:embed hdc`; it adds ~18 MB of unused binaries to every target.
+9. **hdc is external.** Do not embed hdc/libusb. Resolve `-hdc`/config → `$HDC`
+   → `PATH`; if no system hdc is found, fail with the installation hint. This
+   keeps the binary small and lets hdc be updated independently.
 
 ## Architecture / file map
 
@@ -131,10 +132,10 @@ Go rewrite.
 
 - Config: `os.UserConfigDir()/hoscpygo/config.json`; override with
   `HOSCPYGO_CONFIG` or `-config`.
-- Cache/extracted binaries: `os.UserCacheDir()/hoscpygo`.
-- `hdc` resolution order: `-hdc`/config → `$HDC` → `PATH` → embedded hdc for
-  this build target (with `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`/`PATH` for
-  libusb). A system hdc always wins over the embedded copy.
+- Cache for extracted device assets: `os.UserCacheDir()/hoscpygo` (hdc is not cached).
+- `hdc` resolution order: `-hdc`/config → `$HDC` → `PATH`. There is no
+  embedded fallback: a missing hdc is a startup error with installation
+  guidance.
 - Defaults: mode `auto`, scale 2, 60 fps, 8 Mbps, I-frame 2000 ms, image scale
   0.5, listen `127.0.0.1:8899`.
 - Bitrate on the device command is **bits/s**: `BitRateMbps << 20`.
@@ -157,11 +158,11 @@ Before yielding any non-trivial change:
 - For video changes: connect with `mode:"video"`, wait for `streaming`, open
   `/ws`, confirm SPS/PPS + IDR, fetch `/layout` and `/screenshot`.
 - For image changes: `mode:"image"`, confirm JPEG frames and layout/input.
-- For embedded-asset changes: run with a temporary `HOME` and minimal `PATH` to
-  force extraction of the embedded hdc (`/api/health` must show the cache path).
-- After hdc/build changes: `strings -a bin/hoscpygo | grep -o 'hdc/[a-z0-9_]*/hdc' | sort -u`
-  must show only the host target (e.g. `hdc/linux_amd64/hdc`); size should be
-  ~27 MB, not ~45 MB.
+- For hdc-resolution changes: put a fake `hdc` in a temp directory on `PATH`
+  and verify `/api/health` reports it; with an empty `PATH`/`HDC`, startup must
+  fail and print the installation hint.
+- `strings -a bin/hoscpygo | grep -E 'hdc/(linux|darwin|windows)_'` must be empty;
+  no hdc binaries are embedded.
 - Cross-compile after changing imports/OS-specific code.
 
 Device smoke helpers (use only on test devices; destructive cleanup is opt-in):
@@ -206,7 +207,6 @@ cannot load on retail HarmonyOS without Huawei signing.
 ## Licensing
 
 MIT covers original Go/JS only. `internal/assets/device/*` are Huawei SDK
-binaries; `internal/assets/hdc/*` includes Apache-2.0 hdc and LGPL-2.1 libusb;
-`jmuxer` is MIT. Read `NOTICE` before changing distribution or embedding
+binaries; `jmuxer` is MIT. hdc is not bundled and is installed separately. Read `NOTICE` before changing distribution or embedding
 additional binaries. Prefer runtime extraction from a user-provided SDK jar if
 redistribution rights are unclear.

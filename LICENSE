@@ -22,4 +22,4 @@ SOFTWARE.
 
 This license applies only to the original Go/JavaScript source in this
 repository. It does not apply to the third-party binaries under
-internal/assets/device and internal/assets/hdc; see NOTICE.
+internal/assets/device; see NOTICE.

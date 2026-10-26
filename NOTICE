@@ -14,24 +14,17 @@ by the repository's MIT LICENSE and may have different redistribution terms.
    - They carry an appended Huawei CBG code signature, which the HarmonyOS
      uitest loader requires.
 
-2. hdc (internal/assets/hdc/*)
-   - hdc from the OpenHarmony `developtools_hdc` project, Apache License 2.0.
-   - The bundled `libusb_shared` binaries are libusb, LGPL-2.1-or-later. They are
-     extracted to a cache directory at runtime and dynamically loaded, not
-     statically linked. Provide the libusb source/notice and relinking
-     information if you redistribute them.
-   - The hdc binaries used here were taken from the OpenHarmony_Scrcpy project
-     (Apache-2.0) as a convenience; replace them with your own DevEco hdc if
-     your distribution requires a newer version.
-
-3. jmuxer (internal/assets/web/jmuxer.min.js)
+2. jmuxer (internal/assets/web/jmuxer.min.js)
    - jmuxer, MIT License, https://github.com/samir3629/jmuxer.
 
-4. Go modules
+3. Go modules
    - google.golang.org/grpc, google.golang.org/protobuf, golang.org/x/net,
      golang.org/x/sys, golang.org/x/text: Apache-2.0/BSD-style licenses.
    - github.com/gorilla/websocket: BSD-2-Clause.
    - See go.sum / the module sources for the exact notices.
+
+hdc is not bundled. Install the HarmonyOS/OpenHarmony command-line tools
+separately (hdc is Apache-2.0; its libusb dependency is LGPL-2.1-or-later).
 
 The reverse-engineering protocol descriptions and the original Go/JS code are
 provided for interoperability and research. Huawei trademarks and binaries

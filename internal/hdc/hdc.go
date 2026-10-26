@@ -9,15 +9,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"hoscpygo/internal/assets"
-	"hoscpygo/internal/config"
 )
 
 // Client runs hdc commands for one or more devices.
@@ -33,9 +28,11 @@ func New(bin string, env []string) *Client {
 	return &Client{Bin: bin, Env: env, DefaultTimeout: 12 * time.Second}
 }
 
-// Resolve returns an hdc executable. Precedence:
-// explicit -hdc/config path, $HDC, PATH, then the embedded hdc for this target.
-// A system hdc is always preferred over the embedded copy.
+// Resolve returns the system hdc executable. Precedence:
+// explicit -hdc/config path, $HDC, then PATH.
+//
+// hdc is intentionally not embedded: the binaries are large, platform
+// specific, and easier to update from the HarmonyOS command-line tools.
 func Resolve(configured string) (bin string, env []string, err error) {
 	if configured != "" {
 		if st, statErr := os.Stat(configured); statErr == nil && !st.IsDir() {
@@ -47,57 +44,12 @@ func Resolve(configured string) (bin string, env []string, err error) {
 		if st, statErr := os.Stat(p); statErr == nil && !st.IsDir() {
 			return p, os.Environ(), nil
 		}
+		return "", nil, fmt.Errorf("HDC=%q is not a file", p)
 	}
 	if p, lookErr := exec.LookPath("hdc"); lookErr == nil {
 		return p, os.Environ(), nil
 	}
-	return extractEmbedded()
-}
-
-func extractEmbedded() (string, []string, error) {
-	exeName, exe, libName, lib, err := assets.HDCBundle()
-	if err != nil {
-		return "", nil, fmt.Errorf("hdc not found in PATH and embedded hdc unavailable: %w", err)
-	}
-	dir := filepath.Join(config.CacheDir(), "hdc", runtime.GOOS+"_"+runtime.GOARCH)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", nil, err
-	}
-	exePath := filepath.Join(dir, exeName)
-	libPath := filepath.Join(dir, libName)
-	if err := writeIfChanged(exePath, exe, 0o755); err != nil {
-		return "", nil, err
-	}
-	if err := writeIfChanged(libPath, lib, 0o755); err != nil {
-		return "", nil, err
-	}
-	env := os.Environ()
-	switch runtime.GOOS {
-	case "windows":
-		env = append(env, "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	case "darwin":
-		env = append(env, "DYLD_LIBRARY_PATH="+dir+string(os.PathListSeparator)+os.Getenv("DYLD_LIBRARY_PATH"))
-		env = append(env, "DYLD_FALLBACK_LIBRARY_PATH="+dir+string(os.PathListSeparator)+os.Getenv("DYLD_FALLBACK_LIBRARY_PATH"))
-	default:
-		env = append(env, "LD_LIBRARY_PATH="+dir+string(os.PathListSeparator)+os.Getenv("LD_LIBRARY_PATH"))
-	}
-	slog.Debug("using embedded hdc", "path", exePath)
-	return exePath, env, nil
-}
-
-func writeIfChanged(path string, data []byte, mode os.FileMode) error {
-	if st, err := os.Stat(path); err == nil && st.Size() == int64(len(data)) {
-		_ = os.Chmod(path, mode)
-		return nil
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, mode); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, mode); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return "", nil, fmt.Errorf("hdc not found. Install the HarmonyOS/OpenHarmony command-line tools and add hdc to PATH, or pass -hdc /path/to/hdc (or set HDC=/path/to/hdc). Typical DevEco location: <command-line-tools>/sdk/default/openharmony/toolchains/hdc")
 }
 
 func (c *Client) run(ctx context.Context, timeout time.Duration, args ...string) (string, error) {

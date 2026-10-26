@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -53,5 +54,17 @@ func TestResolvePrefersPath(t *testing.T) {
 	}
 	if filepath.Clean(got) != filepath.Clean(fake) {
 		t.Fatalf("Resolve()=%q want PATH candidate %q", got, fake)
+	}
+}
+
+func TestResolveMissing(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HDC", "")
+	_, _, err := Resolve("")
+	if err == nil {
+		t.Fatal("expected missing hdc error")
+	}
+	if !strings.Contains(err.Error(), "hdc not found") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

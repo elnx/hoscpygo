@@ -6,7 +6,8 @@ It replaces the Java/JavaCV/Swing host of
 
 - a Go device/session core (hdc + uitest agent + gRPC H.264),
 - an embedded browser UI (no npm build step, no CDN),
-- embedded hdc binaries and embedded device-side assets (`libscreen_casting` variants + uitest agents),
+- embedded device-side assets (`libscreen_casting` variants + uitest agents),
+- an external system hdc (`-hdc`, `$HDC`, or `PATH`; not bundled),
 - no JVM, no JavaCV/OpenCV/Tesseract, no CGO.
 
 The browser is the video client: H.264 is decoded with **WebCodecs** when
@@ -37,9 +38,9 @@ Requirements on the host:
 
 - Linux, macOS (amd64/arm64) or Windows (amd64).
 - A Chromium browser with H.264 WebCodecs/MSE support (Chrome/Edge).
-- hdc resolution order: `-hdc`/config, `$HDC`, `PATH`, then the embedded hdc
-  for the current build target. A system hdc is always preferred. Each target
-  embeds only its own hdc + libusb (~6 MB), not all four platform copies.
+- hdc is not embedded. It must be resolvable via `-hdc`/config, `$HDC`, or
+  `PATH`; otherwise startup fails with an installation hint. Install the
+  HarmonyOS/OpenHarmony command-line tools and put `hdc` on `PATH`.
 - A device with USB debugging (or a reachable hdc server on port 8710).
 
 Flags:
@@ -69,7 +70,8 @@ make dist
 ```
 
 `CGO_ENABLED=0` is used for every target. Each artifact is a single file with
-the web UI, the target's hdc + libusb, and all device `.so` assets embedded.
+the web UI and all device `.so` assets embedded. hdc is an external host
+prerequisite (resolved from `-hdc`, `$HDC`, or `PATH`), not bundled.
 
 ## Architecture
 
@@ -205,8 +207,8 @@ extension path on retail HarmonyOS without Huawei signing.
 ## Licensing
 
 The Go code is MIT (see `LICENSE`). The embedded `internal/assets/device/*.so`
-and `internal/assets/hdc/*` are third-party/Huawei binaries and are **not**
-covered by that license; see `NOTICE`. If you redistribute this binary, confirm
+are third-party/Huawei binaries and are **not** covered by that license; see
+`NOTICE`. hdc is not bundled. If you redistribute this binary, confirm
 that you have the right to redistribute those assets. The safe alternative is
 to load them at runtime from a user-provided official SDK jar.
 
