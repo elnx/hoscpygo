@@ -241,11 +241,17 @@ device, the launcher falls back to the vendor assets.
 To rebuild and replace it after changing the server sources:
 
 ```sh
-./native/server/build.sh
-llvm-strip --strip-unneeded native/server/build/hoscpy_server.z.so
-cp native/server/build/hoscpy_server.z.so \
-  internal/assets/device/server_static.z.so
-# rebuild the Go binary/dist so go:embed picks up the new bytes
+export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
+make native-asset   # rebuild + strip + copy into internal/assets/device/
+make dist           # rebuild Go binaries so go:embed picks up the new bytes
+```
+
+Or, from a clean dependency tree, one command:
+
+```sh
+export OHOS=/path/to/openharmony
+export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
+make dist-native    # dependency chain + native asset + all Go dist binaries
 ```
 
 ## Deploy and test

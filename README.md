@@ -274,6 +274,26 @@ make proto   # requires protoc + protoc-gen-go + protoc-gen-go-grpc
 make build
 ```
 
+Native server targets are optional and POSIX-only (Linux/macOS/WSL):
+
+```bash
+# ordinary Go release; embeds the checked-in server_static.z.so
+make dist
+
+# rebuild the native dependency chain + server, strip/embed it, then make dist
+export OHOS=/path/to/openharmony
+export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
+make dist-native
+
+# or individually
+make native-deps     # static absl/protobuf/gRPC/... and server
+make native-server   # rebuild only the extension against existing deps
+make native-asset    # strip + copy into internal/assets/device/
+```
+
+`make dist` does not need the OHOS toolchain. `make dist-native` does, and is
+documented in [`native/server/README.md`](native/server/README.md).
+
 Layout:
 
 ```
