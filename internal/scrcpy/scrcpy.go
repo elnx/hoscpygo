@@ -55,6 +55,8 @@ func VariantsFor(_ string) []Variant {
 	return []Variant{
 		{Asset: "server_static.z.so", Unix: true},
 		{Asset: "server_unix_6.5.z.so", Unix: true},
+		{Asset: "server_unix_6.4.z.so", Unix: true},
+		{Asset: "server_unix_6.3.1.z.so", Unix: true},
 	}
 }
 
@@ -144,6 +146,9 @@ func videoFailureHint(errs []string) string {
 	blob := strings.ToLower(strings.Join(errs, "\n"))
 	if strings.Contains(blob, "error relocating") && strings.Contains(blob, "symbol not found") {
 		return " (device-side video server is incompatible with this device OS/ABI; use image mode or obtain a compatible HOScrcpy server asset)"
+	}
+	if strings.Contains(blob, "permission denied") || strings.Contains(blob, "xpm check failed") {
+		return " (the device's XPM rejected the unsigned extension; use a signed vendor asset, or image mode)"
 	}
 	if strings.Contains(blob, "dlopen") && strings.Contains(blob, "failed") {
 		return " (device-side video server failed to load; check the OS version and signed asset compatibility)"

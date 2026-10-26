@@ -14,8 +14,16 @@ func TestVariantsNewSystem(t *testing.T) {
 
 func TestVariantsFallback(t *testing.T) {
 	vs := VariantsFor("5.0.0.1")
-	if len(vs) != 2 || vs[0].Asset != "server_static.z.so" || vs[1].Asset != "server_unix_6.5.z.so" {
+	if len(vs) != 4 || vs[0].Asset != "server_static.z.so" || vs[1].Asset != "server_unix_6.5.z.so" ||
+		vs[2].Asset != "server_unix_6.4.z.so" || vs[3].Asset != "server_unix_6.3.1.z.so" {
 		t.Fatalf("unexpected variants: %+v", vs)
+	}
+}
+
+func TestVideoFailureHintXPM(t *testing.T) {
+	hint := videoFailureHint([]string{"Dlopen /data/local/tmp/x.z.so failed: Permission denied; Xpm check failed"})
+	if !strings.Contains(hint, "XPM") || !strings.Contains(hint, "signed") || !strings.Contains(hint, "image mode") {
+		t.Fatalf("unexpected XPM hint: %q", hint)
 	}
 }
 

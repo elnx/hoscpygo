@@ -141,10 +141,15 @@ service ScrcpyService {
 
 Device server support is now limited to current H7/uitest systems:
 
-| uitest version | assets |
+| system | assets |
 |---|---|
-| > 6.0.2.1 | `server_static` → `server_unix_6.5` fallback (abstract socket) |
-| ≤ 6.0.2.1 | no video server; image mode remains available |
+| HarmonyOS PC / dev devices | `server_static` → `server_unix_6.5` → `6.4` → `6.3.1` |
+| H7 phone, locked XPM | unsigned static is rejected with `Permission denied`; vendor fallback + image mode |
+| ≤ uitest 6.0.2.1 | no video server; image mode remains available |
+
+The static server is unsigned. Some H7 production devices enforce XPM/signature
+checks on `dlopen`; on those devices the vendor fallback or image mode is
+required. Image mode is verified on the H7 test device.
 
 Legacy TCP servers and old/x86 agents have been removed from the embedded
 assets. `agent_1.2.3` is the only embedded uitest agent. Agent frames use:

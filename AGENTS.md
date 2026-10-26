@@ -84,10 +84,11 @@ buffer is full).
 The Go video path is orchestration, not capture. Exact flow:
 
 1. `/system/bin/uitest --version` is read.
-2. `scrcpy.VariantsFor` supports current H7/uitest systems only:
-   - `server_static.z.so` first, then `server_unix_6.5.z.so` fallback
-     (abstract socket `scrcpy_grpc_socket`)
-   - legacy TCP and old unix server assets are not embedded
+2. `scrcpy.VariantsFor` supports current unix-socket systems:
+   - `server_static.z.so` first, then `server_unix_6.5` → `6.4` → `6.3.1`
+   - legacy TCP and old/x86 agent assets are not embedded
+   - unsigned static is rejected by XPM on some H7 production devices; use the
+     vendor fallback or image mode there
 3. Kill any existing `hoscpy_server.z.so` process.
 4. Extract the embedded asset to the host cache; compare md5 with
    `/data/local/tmp/hoscpy_server.z.so`; if different, `rm -f` remote then
