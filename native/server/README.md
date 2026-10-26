@@ -192,6 +192,30 @@ cmake --build "$B/grpc-build" --target grpc++ -j 72
 `native/server/build.sh` builds only the extension. It expects the prefixes
 above and does not rebuild dependencies.
 
+## Embedded asset
+
+The verified, stripped build is checked in as:
+
+```
+internal/assets/device/server_static.z.so
+MD5 1cea8a2faf59e3af6791b47b22e313f3
+```
+
+`VariantsFor` tries `server_static.z.so` before the vendor `server_unix_*`
+assets for unix-socket systems. `make dist` / `make build` therefore pick it up
+without a native toolchain on the Go build host. If it cannot start on another
+device, the launcher falls back to the vendor assets.
+
+To rebuild and replace it after changing the server sources:
+
+```sh
+./native/server/build.sh
+llvm-strip --strip-unneeded native/server/build/hoscpy_server.z.so
+cp native/server/build/hoscpy_server.z.so \
+  internal/assets/device/server_static.z.so
+# rebuild the Go binary/dist so go:embed picks up the new bytes
+```
+
 ## Deploy and test
 
 Build and push:

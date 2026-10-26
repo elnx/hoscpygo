@@ -207,16 +207,17 @@ Known timing constraints: variants can take ~10 s each; agent/layout first call
 - `minimal_ext.c` / `build.sh`: OHOS NDK aarch64 extension probe.
 - `dlprobe.c`: direct `dlopen`/`dlsym` probe for the loader ABI.
 - `server/`: unsigned static gRPC/protobuf server probe with public
-  `OH_AVScreenCapture` + `OH_VideoEncoder`; see `server/README.md` for the
-  verified build and the remaining limitations.
+  `OH_AVScreenCapture` + `OH_VideoEncoder`; its stripped build is embedded as
+  `internal/assets/device/server_static.z.so` and selected first on unix-socket
+  devices. See `server/README.md` for the verified build and limitations.
 - `README.md`: reverse-engineering analysis, appended Huawei CBG signature evidence, and the
   unsigned/truncated/copied-signature experiments.
 
-Do not present the probe as a working replacement for the vendor
-`libscreen_casting` extension in the Go app; it is a C++ research/prototype
-loaded with a direct runner. The direct loader proves an unsigned self-built
-`.so` can be loaded by the same `dlopen` path, but the full `uitest
-start-daemon` environment and product integration are separate.
+The embedded static server is still a prototype: display geometry is fixed to
+the probed PC, capture is change-driven, and one stream is supported. The direct
+loader proves an unsigned self-built `.so` can be loaded by the same `dlopen`
+path; the full `uitest start-daemon` path was not demonstrated in the remote
+probe environment, so keep the vendor assets as fallbacks.
 
 ## Licensing
 

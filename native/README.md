@@ -172,8 +172,10 @@ A loaded probe changes its process name to `hoscpy_probe`, appears in
 
 ## 4. Self-built server: what is proven
 
-A working probe now exists in [`server/`](server/README.md). It does **not** need
-the Rosen virtual-screen/system headers:
+A working probe now exists in [`server/`](server/README.md) and is embedded as
+`internal/assets/device/server_static.z.so`; `VariantsFor` tries it before the
+vendor unix-socket assets. It does **not** need the Rosen virtual-screen/system
+headers:
 
 - public `OH_AVScreenCapture` (`libnative_avscreen_capture.so`) captures the home
   screen into an encoder input surface;

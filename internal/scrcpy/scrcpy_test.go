@@ -7,7 +7,7 @@ import (
 
 func TestVariantsNewSystem(t *testing.T) {
 	vs := VariantsFor("6.0.2.3")
-	if len(vs) == 0 || vs[0].Asset != "server_unix_6.5.z.so" || !vs[0].Unix {
+	if len(vs) == 0 || vs[0].Asset != "server_static.z.so" || !vs[0].Unix {
 		t.Fatalf("unexpected first variant: %+v", vs)
 	}
 }

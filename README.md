@@ -191,12 +191,14 @@ that Huawei signing is required by this loader. See
 [`native/README.md`](native/README.md) for the open-source analysis, signature parse,
 and test caveats.
 
-Current practical scope: Go host + reuse the vendor assets that match the target
-OS ABI. A self-built C++ probe is now working without system/Rosen headers: it
+Current scope: Go host + embedded device assets. The self-built C++ server is
+embedded as `server_static.z.so` and is tried first for unix-socket systems. It
 uses the public `OH_AVScreenCapture` + `OH_VideoEncoder` APIs and statically
-links protobuf 33.5, gRPC 1.73, and libc++. It serves the existing
-`ScrcpyService` protocol and produces decodable 2880×1920 H.264 on the tested PC.
-See [`native/server/README.md`](native/server/README.md). This is still a probe:
+links protobuf 33.5, gRPC 1.73, and libc++, so it does not need the PC's
+`libprotobuf.z.so`/`libgrpc*.z.so` ABI. It serves the existing `ScrcpyService`
+protocol and produces decodable 2880×1920 H.264 on the tested PC. If it fails to
+start on another device, the vendor assets remain as fallbacks. See
+[`native/server/README.md`](native/server/README.md). This is still a probe:
 display geometry is fixed, the capture path is change-driven, and one stream is
 supported.
 
@@ -244,9 +246,10 @@ server variants reference the same symbol. Immediate workaround:
   lower-rate JPEG stream still work (the agent does not use protobuf);
 - request a newer ABI-compatible `libscreen_casting`/SDK asset built for the PC
   OS from Huawei, then add it as a new variant in `internal/scrcpy`;
-- or use the self-built static server in [`native/server/`](native/server/README.md)
-  once it is wired into the launcher. The current probe is loaded with a direct
-  `runprobe`; the Go app still pushes the embedded vendor asset.
+- or use the self-built static server embedded as `server_static.z.so`. It is
+  tried before the vendor variants for unix-socket systems; if it cannot start,
+  the launcher falls through to the vendor assets. The current probe is also
+  testable directly with `runprobe` (see `native/server/README.md`).
 
 Do not patch the vendor `.so`: a Go-side change cannot fix a missing device
 system symbol, and vendor assets are licensed third-party binaries.

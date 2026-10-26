@@ -31,8 +31,10 @@ import (
 const (
 	// ExtensionName is the filename we push to /data/local/tmp. It is
 	// deliberately different from HOScrcpy's libscreen_casting.z.so so the two
-	// tools do not overwrite or kill each other's extension. The vendor bytes
-	// are unchanged; Huawei's signature covers file content, not the filename.
+	// tools do not overwrite or kill each other's extension. The embedded
+	// server_static.z.so is our self-built binary; the server_unix_* assets are
+	// unchanged vendor bytes. Huawei's signature covers file content, not the
+	// filename.
 	ExtensionName = "hoscpy_server.z.so"
 	devicePort    = 5000
 )
@@ -53,6 +55,12 @@ type Variant struct {
 // in native/README.md / git history for provenance.
 func VariantsFor(uitestVersion string) []Variant {
 	unixSet := []Variant{
+		// Self-built probe: public OH_AVScreenCapture + static protobuf/gRPC.
+		// It is tried first because the vendor 6.x assets fail relocation on
+		// HarmonyOS PC builds whose system libprotobuf no longer exports
+		// MapFieldBase::SetMapDirty. If it cannot start on another device,
+		// startVariant falls through to the vendor assets below.
+		{Asset: "server_static.z.so", Unix: true},
 		{Asset: "server_unix_6.5.z.so", Unix: true},
 		{Asset: "server_unix_6.4.z.so", Unix: true},
 		{Asset: "server_unix_6.3.1.z.so", Unix: true},
