@@ -306,6 +306,11 @@ assets for unix-socket systems. `make dist` / `make build` therefore pick it up
 without a native toolchain on the Go build host. If it cannot start on another
 device, the launcher falls back to the vendor assets.
 
+`make dist-native` rebuilds and replaces this tracked asset. For a non-dirty
+`git describe` version in a release, commit the rebuilt asset, then run
+`make dist` again from the clean tree (or use `make dist` alone when the
+committed asset is already the intended one).
+
 To rebuild and replace it after changing the server sources:
 
 ```sh
