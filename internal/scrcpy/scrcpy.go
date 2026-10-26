@@ -29,6 +29,10 @@ import (
 )
 
 const (
+	// ExtensionName is the filename we push to /data/local/tmp. It is
+	// deliberately different from HOScrcpy's libscreen_casting.z.so so the two
+	// tools do not overwrite or kill each other's extension. The vendor bytes
+	// are unchanged; Huawei's signature covers file content, not the filename.
 	ExtensionName = "hoscpy_server.z.so"
 	devicePort    = 5000
 )
@@ -42,6 +46,11 @@ type Variant struct {
 }
 
 // VariantsFor selects the server family from the device uitest version.
+//
+// Asset names are normalized from the vendor's dated filenames, e.g.
+// libscrcpy_server_unix_6.5-20260313.z.so -> server_unix_6.5.z.so, so the
+// selection table and cache keys stay stable across SDK rebuilds. Use the MD5
+// in native/README.md / git history for provenance.
 func VariantsFor(uitestVersion string) []Variant {
 	unixSet := []Variant{
 		{Asset: "server_unix_6.5.z.so", Unix: true},

@@ -41,7 +41,10 @@ Keep `CGO_ENABLED=0` and one application binary.
    (ETXTBSY). Also `rm -f` the remote file before sending.
 7. **Use targeted process kills.** `kill -9` only processes matching the exact
    extension name/pattern; do not kill all `uitest`/Hypium sessions unless the
-   user explicitly wants cleanup.
+   user explicitly wants cleanup. Keep the device names
+   `hoscpy_server.z.so` / `hoscpy_agent.so`: they avoid overwriting HOScrcpy's
+   `libscreen_casting.z.so` and Hypium's default `agent.so`. Huawei signatures
+   cover file content, not the filename.
 8. **No secrets, no hidden network calls.** The UI is fully embedded; do not add
    CDN/external asset URLs. The server binds localhost by default and has no
    authentication.

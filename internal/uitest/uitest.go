@@ -69,6 +69,8 @@ type Client struct {
 }
 
 func New(client *hdc.Client, server, sn string) *Client {
+	// The custom name avoids clobbering Hypium's default /data/local/tmp/agent.so.
+	// ensureAgent falls back to agent.so for older agents that ignore --extension-name.
 	return &Client{HDC: client, Server: server, SN: sn, Agent: "hoscpy_agent.so"}
 }
 
