@@ -13,6 +13,11 @@ by the repository's MIT LICENSE and may have different redistribution terms.
      user-provided official SDK jar.
    - They carry an appended Huawei CBG code-signing block. This project copies
      them unchanged; no signature verification by the loader is claimed here.
+   - server_static.z.so is the self-built probe from native/server/. It is not a
+     Huawei binary. It statically links protobuf 33.5, gRPC 1.73, Abseil, RE2,
+     c-ares, zlib, and OpenSSL; those components remain under their respective
+     upstream licenses (Apache-2.0, BSD-style, and the OpenSSL license). The
+     source and build instructions are in native/server/.
 
 2. jmuxer (internal/assets/web/jmuxer.min.js)
    - jmuxer, MIT License, https://github.com/samir3629/jmuxer.
