@@ -16,6 +16,8 @@ available, with an **MSE/jmuxer** fallback. The Go process never decodes video.
 ## Features
 
 - Local and remote (`ip:8710`) hdc devices.
+- `-s host[:port]` to use one remote hdc server exclusively, including its
+  `hdc list targets` results.
 - H.264 video stream (device-side hardware encoder, Annex-B AUs).
 - JPEG image-stream fallback (change-driven, typically 1–8 fps) for devices or
   networks where the video extension is unavailable.
@@ -32,7 +34,15 @@ available, with an **MSE/jmuxer** fallback. The Go process never decodes video.
 make build
 ./bin/hoscpygo
 # open http://127.0.0.1:8899/
+
+# Use only the hdc server running on another machine:
+./bin/hoscpygo -s 192.0.2.10:8710
 ```
+
+`-s` is a per-process override and is not written into the config file. It uses
+the local hdc executable but asks it to connect to the given hdc server, so
+`hdc list targets` and all device commands come from that server. A bare host
+gets port `8710`.
 
 Requirements on the host:
 
@@ -49,6 +59,7 @@ Flags:
 -listen 127.0.0.1:8899   HTTP listen address
 -config <path>           config file (default: user config dir/hoscpygo/config.json)
 -hdc <path>              hdc executable
+-s <host[:port]>         use only this hdc server (default port 8710)
 -no-open                 do not open the browser
 -debug                   debug logging
 -version                 print version

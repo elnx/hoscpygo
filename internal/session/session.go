@@ -137,6 +137,11 @@ func (m *Manager) Connect(ctx context.Context, sn, server, mode string) (*Sessio
 	}
 	server = config.NormalizeServer(server)
 	if server == "" {
+		if servers := m.cfg.Servers(); len(servers) > 0 {
+			server = servers[0]
+		}
+	}
+	if server == "" {
 		server = "127.0.0.1:8710"
 	}
 	key := server + "/" + sn

@@ -143,6 +143,10 @@ probe in `native/server/`) plus a variant entry, not a Go rewrite.
 - `hdc` resolution order: `-hdc`/config → `$HDC` → `PATH`. There is no
   embedded fallback: a missing hdc is a startup error with installation
   guidance.
+- `-s host[:port]` is a runtime-only hdc server override. It suppresses the
+  local `127.0.0.1:8710` plus configured `remote_servers` list, so
+  `hdc list targets` and every subsequent command use only that server. It is
+  not saved to the config file.
 - Defaults: mode `auto`, scale 2, 60 fps, 8 Mbps, I-frame 2000 ms, image scale
   0.5, listen `127.0.0.1:8899`.
 - Bitrate on the device command is **bits/s**: `BitRateMbps << 20`.

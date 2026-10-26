@@ -28,6 +28,17 @@ func TestServersDedup(t *testing.T) {
 	}
 }
 
+func TestServersOverride(t *testing.T) {
+	c := Default()
+	c.RemoteServers = []string{"192.168.1.10"}
+	c.Server = " 192.0.2.10 "
+	c.Normalize()
+	got := c.Servers()
+	if len(got) != 1 || got[0] != "192.0.2.10:8710" {
+		t.Fatalf("servers=%v", got)
+	}
+}
+
 func TestNormalizeDefaults(t *testing.T) {
 	c := &Config{Scale: 99, FrameRate: 999, BitRateMbps: 999, ImageScale: 2}
 	c.Normalize()

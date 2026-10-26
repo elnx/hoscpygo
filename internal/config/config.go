@@ -18,8 +18,11 @@ const (
 
 // Config is persisted as JSON in the user's config directory.
 type Config struct {
-	Listen          string   `json:"listen"`
-	HdcPath         string   `json:"hdc_path"`
+	Listen  string `json:"listen"`
+	HdcPath string `json:"hdc_path"`
+	// Server, when set, makes this process use only that hdc server for
+	// discovery and device commands. It is a runtime -s override, not persisted.
+	Server          string   `json:"-"`
 	RemoteServers   []string `json:"remote_servers"`
 	Mode            string   `json:"mode"`
 	Scale           int      `json:"scale"`
@@ -125,13 +128,19 @@ func (c *Config) Normalize() {
 	if c.ImageScale <= 0 || c.ImageScale > 1 {
 		c.ImageScale = 0.5
 	}
+	c.Server = NormalizeServer(c.Server)
 	for i, s := range c.RemoteServers {
 		c.RemoteServers[i] = NormalizeServer(s)
 	}
 }
 
-// Servers returns the local hdc server plus configured remote servers, deduped.
+// Servers returns the effective hdc servers. A -s override wins and suppresses
+// the local/configured list; otherwise it is the local hdc server plus
+// configured remote servers, deduped.
 func (c *Config) Servers() []string {
+	if c.Server != "" {
+		return []string{c.Server}
+	}
 	out := []string{"127.0.0.1:8710"}
 	seen := map[string]bool{out[0]: true}
 	for _, s := range c.RemoteServers {

@@ -25,6 +25,7 @@ func main() {
 		listen  = flag.String("listen", "", "HTTP listen address (default from config: 127.0.0.1:8899)")
 		cfgPath = flag.String("config", "", "config file path")
 		hdcPath = flag.String("hdc", "", "path to the hdc executable")
+		server  = flag.String("s", "", "hdc server host[:port] to use exclusively (remote hdc machine)")
 		noOpen  = flag.Bool("no-open", false, "do not open a browser")
 		debug   = flag.Bool("debug", false, "enable debug logging")
 		showVer = flag.Bool("version", false, "print version and exit")
@@ -55,10 +56,16 @@ func main() {
 	if *hdcPath != "" {
 		cfg.HdcPath = *hdcPath
 	}
+	if *server != "" {
+		cfg.Server = *server
+	}
 	if *debug {
 		cfg.Debug = true
 	}
 	cfg.Normalize()
+	if cfg.Server != "" {
+		slog.Info("using hdc server override", "server", cfg.Server)
+	}
 	if err := cfg.Save(path); err != nil {
 		slog.Warn("save config", "err", err)
 	}
