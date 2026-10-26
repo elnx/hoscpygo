@@ -310,13 +310,16 @@ func pushServer(ctx context.Context, opts Options, v Variant) error {
 	}
 	remote := "/data/local/tmp/" + ExtensionName
 	localMD5 := md5Hex(data)
-	if opts.HDC.MD5(ctx, opts.Server, opts.SN, remote) == localMD5 {
-		return nil
+	if opts.HDC.MD5(ctx, opts.Server, opts.SN, remote) != localMD5 {
+		_, _ = opts.HDC.Shell(ctx, opts.Server, opts.SN, "rm -f "+remote, 8*time.Second)
+		if err := opts.HDC.FileSend(ctx, opts.Server, opts.SN, local, remote); err != nil {
+			return fmt.Errorf("push server: %w", err)
+		}
 	}
-	_, _ = opts.HDC.Shell(ctx, opts.Server, opts.SN, "rm -f "+remote, 8*time.Second)
-	if err := opts.HDC.FileSend(ctx, opts.Server, opts.SN, local, remote); err != nil {
-		return fmt.Errorf("push server: %w", err)
-	}
+	// hdc preserves the local cache mode (0644). The uitest loader has been
+	// observed to reject non-executable extension files, so normalize it
+	// whether the file was just pushed or already matched.
+	_, _ = opts.HDC.Shell(ctx, opts.Server, opts.SN, "chmod 755 "+remote, 8*time.Second)
 	return nil
 }
 
