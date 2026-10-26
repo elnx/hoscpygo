@@ -88,13 +88,60 @@ The native dependency/server build is POSIX (Linux, macOS, or WSL). Windows only
 needs Go for `make dist`, because the checked-in `server_static.z.so` is already
 embedded; the Go build does **not** invoke this toolchain.
 
-The version set is:
+### Component dependencies
 
-- abseil-cpp from the OpenHarmony tree
-- protobuf 33.5.0 (`GOOGLE_PROTOBUF_VERSION 6033005`)
-- gRPC 1.73.0
-- re2, c-ares, zlib, OpenSSL 3.0.9
-- OHOS NDK clang 15, `-fPIC`, static libraries, static libc++ in the final `.so`
+This table is the exact set used by the probe. The revisions are from the
+OpenHarmony tree used for the verified build; use a consistent OpenHarmony
+branch/tag rather than mixing arbitrary latest commits.
+
+| Path under `$OHOS` | OpenHarmony repo | Version / revision in probe |
+|---|---|---|
+| `third_party/abseil-cpp` | `third_party_abseil-cpp` | LTS 20250127, `0456d6d` |
+| `third_party/zlib` | `third_party_zlib` | 1.3.2, `0a0c45d` |
+| `third_party/cares` | `third_party_cares` | 1.34.5, `d5552d4` |
+| `third_party/re2` | `third_party_re2` | `7357c59` |
+| `third_party/openssl` | `third_party_openssl` | 3.0.9, `4ea1f14` |
+| `third_party/protobuf` | `third_party_protobuf` | 33.5.0, `8043cc3` |
+| `third_party/grpc` | `third_party_grpc` | 1.73.0, `2f114c2` |
+
+The OpenHarmony mirrors are:
+
+```
+https://gitcode.com/openharmony/<repo>
+https://gitee.com/openharmony/<repo>      # mirror
+```
+
+A full `repo sync` is not required: create `$OHOS/third_party/` and clone only
+the seven projects above into the listed paths, then provide the xDS inputs
+below. Using the exact OpenHarmony revisions avoids mixing incompatible
+protobuf/gRPC branches.
+
+`upb`, `utf8_range`, and `address_sorting` are tracked inside the gRPC repo;
+protobuf's host build also uses its bundled `third_party/abseil-cpp` and
+`third_party/utf8_range`. They are not separate OpenHarmony repo projects.
+
+The OHOS NDK/clang/sysroot is a separate DevEco command-line-tools install, not
+part of `$OHOS`.
+
+### gRPC xDS inputs (not in the OpenHarmony gRPC repo)
+
+gRPC 1.73's CMake builds xDS support and needs five extra source trees. They are
+normally downloaded by gRPC's `gRPC_DOWNLOAD_ARCHIVES` logic and are **not**
+tracked in `third_party_grpc`; a fresh OpenHarmony checkout does not contain
+them. The probe tree had them as untracked directories:
+
+| Path under `third_party/grpc/third_party` | Upstream | Pin used by gRPC |
+|---|---|---|
+| `xds` | `cncf/xds` | `3a472e524827f72d1ad621c4983dd5af54c46776` |
+| `envoy-api` | `envoyproxy/data-plane-api` | `4de3c74cf21a9958c1cf26d8993c55c6e0d28b49` |
+| `googleapis` | `googleapis/googleapis` | `fe8ba054ad4f7eca946c2d14a63c3f07c0b586a0` |
+| `opencensus-proto` | `census-instrumentation/opencensus-proto` | `v0.3.0` |
+| `protoc-gen-validate` | `bufbuild/protoc-gen-validate` | `v1.2.1` |
+
+`build-deps.sh` detects missing directories and leaves
+`gRPC_DOWNLOAD_ARCHIVES=ON`, so CMake can fetch them. For an offline build,
+clone those five repos into the paths above at the pinned revisions first. A
+full `repo sync` alone is not sufficient for the xDS headers.
 
 ### Configure commands
 
