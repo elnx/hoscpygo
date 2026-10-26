@@ -22,13 +22,15 @@ Keep `CGO_ENABLED=0` and one application binary.
 1. **Never reimplement `libscreen_casting*.z.so` in Go.** It is a native OHOS
    system extension using `OHOS::Rosen` virtual-screen APIs and the native media
    encoder. It is not portable to Go and cannot run in the Go process.
-2. **Do not replace, rebuild, strip, truncate or re-sign the vendor device
-   assets.** The HarmonyOS 7 uitest loader requires Huawei CBG code signatures.
-   Unsigned/self-built extensions fail silently, including on rooted devices.
-   See `native/README.md`; the only supported path is reuse of the signed assets
-   (or a Huawei-signed replacement). A missing system symbol such as
-   `MapFieldBase11SetMapDirty` means the asset ABI does not match the device OS:
-   use image mode or update the signed asset; never patch/re-sign the `.so`.
+2. **Treat vendor device assets as signed third-party binaries.** Their files
+   carry an appended Huawei CBG PKCS#7 block, but OpenHarmony source shows `uitest`'s
+   `ExecuteExtension` only calls `dlopen`/`dlsym`/`OnInit`/`OnRun`; no signature
+   verifier is called. Do **not** assume signing is required or is the blocker:
+   earlier unsigned/truncated tests were confounded by file mode, the
+   `OnInit(void*, int, char**)` ABI, and a daemon that failed before extension
+   load. Do not modify/re-sign vendor assets for distribution. A missing system
+   symbol such as `MapFieldBase11SetMapDirty` is an OS ABI mismatch: use image
+   mode or a compatible server asset. See `native/README.md`.
 3. **Do not add CGO or host-side decoders.** H.264/JPEG decode belongs to the
    browser. Keep `CGO_ENABLED=0` in every build target.
 4. **Keep protocol constants exact.** The agent frame magic is `1145141919`,

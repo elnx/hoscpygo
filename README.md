@@ -173,22 +173,28 @@ Measured: H.264 SPS/PPS+IDR ~32/202–45 KB, P frames ~3–9 KB at scale 2/8 Mbp
 layout 58–180 KB; image stream ~8.4 fps at scale 0.5 under continuous input;
 Go `image/jpeg` decode ~13 ms for 640×1360.
 
-## Native `.so` / Huawei signature
+## Native `.so` / signature observations
 
-**A self-built `libscreen_casting.z.so` cannot be loaded on HarmonyOS 7 without a
-Huawei code signature.** See [`native/README.md`](native/README.md) for the reverse engineering
-analysis and experiments. In short:
+The vendor server/agent `.so` files **do carry an appended Huawei CBG PKCS#7
+signed-data block** (signer `DevEcoTesting Release`, Huawei CBG Software Signing
+Service CA). However, reverse-engineering analysis of
+`OHOS::uitest::ExecuteExtension` shows the loader only does `dlopen`, `dlsym`,
+`OnInit`, `OnRun`; **it does not call a signature verifier**. We found no
+signature-related strings in the inspected `ld-musl`, but a lower-layer check
+cannot be fully ruled out.
 
-- the vendor server/agent have an appended Huawei CBG PKCS#7 signature;
-- a truncated vendor server (ELF intact, signature removed) does not initialize;
-- an unsigned self-built extension (OHOS NDK API 26) does not initialize;
-- appending the vendor signature to a different ELF does not initialize;
-- the same unsigned extension fails on a rooted/eng H7 device.
+An earlier claim that unsigned extensions cannot load was based on tests with
+confounders (file mode `0644` → `Dlopen: Permission denied`, wrong 2-argument
+`OnInit` ABI, and a daemon that logged `StartDaemon: Failed to initialize
+server` before a meaningful extension test). It is therefore **not established**
+that Huawei signing is required by this loader. See
+[`native/README.md`](native/README.md) for the open-source analysis, signature parse,
+and test caveats.
 
-Therefore the practical scope is: Go host + reuse the **signed** vendor device
-assets. Writing a new C++ server is possible for OpenHarmony/root targets
-(install to `/system/bin`, as `OpenHarmony_Scrcpy` does), but not for the uitest
-extension path on retail HarmonyOS without Huawei signing.
+Current practical scope: Go host + reuse the vendor assets that match the target
+OS ABI. A self-built C++ server is still hard because it needs OHOS system
+headers/APIs and a system `libprotobuf.z.so`/`libgrpc.z.so`-compatible build, not
+merely a signature.
 
 ## Security
 
@@ -215,10 +221,10 @@ to load them at runtime from a user-provided official SDK jar.
 
 ### HarmonyOS PC 7.0.0.1: `MapFieldBase11SetMapDirty ... symbol not found`
 
-The bundled signed video servers (`server*.z.so`) link against the system
+The bundled video servers (`server*.z.so`) link against the system
 `libprotobuf.z.so` and import `google::protobuf::internal::MapFieldBase::
 SetMapDirty`. Some HarmonyOS PC builds ship a newer protobuf that no longer
-exports that symbol, so the signed `.so` cannot be relocated:
+exports that symbol, so the `.so` cannot be relocated:
 
 ```
 Dlopen /data/local/tmp/hoscpy_server.z.so failed:
@@ -232,11 +238,11 @@ server variants reference the same symbol. Immediate workaround:
 - use **image mode** (UI "图片 JPEG", config `"mode": "image"`, or
   `POST /api/connect {"mode":"image"}`): control, layout, screenshot and a
   lower-rate JPEG stream still work (the agent does not use protobuf);
-- request a newer signed `libscreen_casting`/SDK asset built for the PC OS from
-  Huawei, then add it as a new variant in `internal/scrcpy`.
+- request a newer ABI-compatible `libscreen_casting`/SDK asset built for the PC
+  OS from Huawei, then add it as a new variant in `internal/scrcpy`.
 
-Do not patch/re-sign the vendor `.so`: the uitest loader requires a valid Huawei
-CBG signature, and a Go-side change cannot fix a missing device system symbol.
+Do not patch the vendor `.so`: a Go-side change cannot fix a missing device
+system symbol, and vendor assets are licensed third-party binaries.
 
 ## Development
 

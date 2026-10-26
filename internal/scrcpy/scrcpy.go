@@ -195,7 +195,7 @@ func Start(ctx context.Context, opts Options) (*Stream, error) {
 func videoFailureHint(errs []string) string {
 	blob := strings.ToLower(strings.Join(errs, "\n"))
 	if strings.Contains(blob, "error relocating") && strings.Contains(blob, "symbol not found") {
-		return " (device-side signed video server is incompatible with this device OS/ABI; use image mode or obtain a newer signed HOScrcpy server asset)"
+		return " (device-side video server is incompatible with this device OS/ABI; use image mode or obtain a compatible HOScrcpy server asset)"
 	}
 	if strings.Contains(blob, "dlopen") && strings.Contains(blob, "failed") {
 		return " (device-side video server failed to load; check the OS version and signed asset compatibility)"

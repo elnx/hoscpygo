@@ -1,4 +1,4 @@
-# Native device-side extension: reverse-engineering findings and the signing wall
+# Native device-side extension: reverse-engineering findings and signature observations
 
 This directory documents and probes the device-side `libscreen_casting*.z.so`
 that HOScrcpy pushes to `/data/local/tmp` and loads with:
@@ -23,94 +23,152 @@ Relevant exported functions:
 | `ScreenEncoder::Run` | constructs a `VirtualScreenOption` named `scrcpy` (DPI/size), creates a virtual screen, configures the native H.264 encoder/surface |
 | `ScreenRecorder` / `AudioRecorder` | optional record/audio paths; the gRPC proto only carries video `data` |
 
-There is no Huawei-specific obfuscation in the gRPC layer: the proto is the same
-one reconstructed in `../proto/scrcpy.proto`. The hard part is the platform
-side: Rosen virtual-screen system APIs (`ScreenManager::CreateVirtualScreen`)
-plus OHOS native media encoder, all of which are system APIs, not public NDK
-APIs.
+The gRPC layer is not obfuscated: the proto is the same one reconstructed in
+`../proto/scrcpy.proto`. The hard part is the platform side: Rosen
+virtual-screen system APIs (`ScreenManager::CreateVirtualScreen`) plus the OHOS
+native media encoder, both system APIs rather than public NDK APIs.
 
-## 2. Signature requirement
+## 2. Signature block: present, but not verified by the loader
 
-The vendor `.so` files are **code-signed**. The signature is appended after the
-ELF section table (not a regular section):
+### 2.1 The file does carry a Huawei signing block
 
-```
-server_unix_6.5.z.so  268469 bytes, ELF section table ends at 256176;
-                      +12293-byte tail containing a Huawei CBG PKCS#7 signature
-uitest_agent_1.2.3.so 600246 bytes, ELF ends at 578424;
-                      +21822-byte tail with the agent version marker + signature
-```
-
-The appended PKCS#7 contains the chain:
+`server_unix_6.5.z.so` is 268,469 bytes. Its ELF section table ends at 256,176;
+after a 1,872-byte zero pad there is a 12,293-byte trailer. `openssl` parses the
+main trailer object as a PKCS#7 `SignedData` (`sha256`, `pkcs7-data`), with:
 
 ```
-Huawei CBG Software Signing Service CA
-Huawei CBG Root CA G2
+signer subject: C=CN, O=Huawei, OU=Huawei CBG, CN=DevEcoTesting Release
+issuer:         Huawei CBG Software Signing Service CA
+root chain:     Huawei CBG Root CA G2
+signingTime:    2026-03-13 09:36:42Z
+digest:         SHA-256
+signature:      ECDSA-SHA256
+custom attr:    1.3.6.1.4.1.2011.2.376.1.4.1 = DEBUG_LIB_ID
 ```
 
-Experiments on a retail HarmonyOS 7.0.0.17 device (user build) and a
-rooted/eng 7.0.0.21 device:
+So **yes, this is a Huawei code-signing container, not just a random certificate
+bundle**. The agent `.so` has a similar signed trailer. We did not complete a
+cryptographic verification of the detached manifest against the ELF in this
+repository; the PKCS#7 structure and signer chain are confirmed, but do not read
+this as "we verified every signed byte".
 
-| Artifact | Result |
-|---|---|
-| original signed vendor server | loads, binds `@scrcpy_grpc_socket`, streams |
-| vendor server truncated to the ELF end (all code intact, signature removed) | process starts but never initializes/binds |
-| minimal self-built OHOS NDK extension, unsigned | process starts but constructor/entry never runs |
-| self-built extension + copied vendor signature tail | same failure |
-| self-built extension on root/eng device | same failure |
+### 2.2 `uitest` itself does not call a verifier
 
-The loader `uitest` itself dlsyms `UiTestExtension_OnInit` and
-`UiTestExtension_OnRun` and logs `Dlopen`/`Dlsym` failures; signature rejection
-is **silent** (no normal Dlopen error), which is consistent with verification
-below the loader. Appending the vendor signature to a different ELF also fails,
-so the check is cryptographic, not presence-only.
+analysis based on the OpenHarmony open-source implementation of `OHOS::uitest::ExecuteExtension` in `/system/bin/uitest`
+shows the complete path:
 
-**Conclusion:** on HarmonyOS 6/7, the uitest extension path requires a valid
-Huawei signature over the exact ELF. Root does not bypass it on the tested eng
-device. Self-written C++ can be built, but cannot be deployed to a retail
-device through this loader without Huawei signing (or a device with verification
-disabled/patched).
+```c
+path = "/data/local/tmp/" + extension_name;
+if (!FileExists(path)) { log("Client nativeCode not exist"); return false; }
+handle = dlopen(path, RTLD_LAZY);          // (1)
+if (!handle) { log("Dlopen %s failed: %s", dlerror()); return false; }
+onInit = dlsym(handle, "UiTestExtension_OnInit");
+onRun  = dlsym(handle, "UiTestExtension_OnRun");
+if (onInit(...lowLevelFunctions, argc, argv) == 0) {
+    onRun();
+}
+dlclose(handle);
+```
 
-Practical options:
+There is **no signature/certificate/hash check in `ExecuteExtension`**. The
+`EXTENSION_API_CHECK failed` string belongs to `PrintLog`,
+`InitLowLevelFunctions`, and `WriteToBuffer` argument validation, not to code
+signing. `uitest` has a `NEEDED libsec_shared.z.so`, but `ExecuteExtension` does
+not call it. `/lib/ld-musl-aarch64.so.1` also has no code-signing strings in the
+versions inspected; we have not found a verifier in the loader path.
 
-1. **Reuse the signed vendor assets** and rewrite only the host (this project).
-2. Obtain official Huawei signing/partner access for your own extension.
-3. For rooted OpenHarmony devices, install a self-built server as a system
-   binary (the `OpenHarmony_Scrcpy` approach) instead of using the uitest
-   extension loader.
-4. Do not plan a pure-Go device-side replacement: Go cannot produce a signed
-   OHOS uitest extension, and the capture APIs are native.
+**Therefore, the current OpenHarmony open-source implementation indicates that the uitest daemon does not
+verify the extension signature.** The signature trailer is present, but the
+previously claimed "signature is required and unsigned .so is rejected" is
+**not supported** by the loader code.
+
+### 2.3 Why the earlier unsigned/truncated experiments were inconclusive
+
+Earlier notes in this directory claimed that unsigned/truncated `.so` files
+failed because of signature verification. That conclusion was too strong. The
+tests had confounders:
+
+- A file pushed with mode 0644 produced
+  `Dlopen ... failed: Permission denied`; `chmod 755` changes the result.
+- The first minimal probe used the wrong entry ABI. The loader calls
+  `OnInit(void *lowLevelFunctions, int argc, char **argv)`, not
+  `OnInit(int argc, char **argv)`. The current `minimal_ext.c` uses the correct
+  3-argument form.
+- A standalone `uitest start-daemon singeness --extension-name ...` without a
+  test server/apiCaller can log `StartDaemon: Failed to initialize server` and
+  exit before a meaningful extension test. The vendor server happens to block
+  inside `RpcServer::InitServer`, which can mask this ordering.
+- The earlier truncated/patch tests were run in that incomplete environment, so
+  they do not prove a signature check.
+
+A proper unsigned-extension test needs a valid test-server/agent environment
+(e.g. the Hypium/uitest caller that `start-daemon` expects), mode 0755, the
+3-argument `OnInit`, and a clean `@uitest_socket` state. Until that is done, the
+signature requirement remains **unproven**; the signature block's existence is
+confirmed, but its enforcement is not.
+
+### 2.4 The HarmonyOS PC error is unrelated to signing
+
+The PC failure:
+
+```
+Error relocating /data/local/tmp/hoscpy_server.z.so:
+_ZN6google8protobuf8internal12MapFieldBase11SetMapDirtyEv: symbol not found
+```
+
+happens **after** `dlopen` has accepted the file, during ELF relocation. It is a
+`libprotobuf.z.so` ABI mismatch, not a signature rejection. All bundled server
+variants import that symbol. A self-built or newer compatible server would need
+to match the PC's system gRPC/protobuf ABI regardless of signing.
 
 ## 3. Minimal probe
 
 `minimal_ext.c` builds an aarch64 OHOS shared library exporting the two loader
-symbols and a constructor, writing markers to `/data/local/tmp`. It proves
-whether an unsigned extension is accepted.
+symbols and a constructor, writing markers to `/data/local/tmp` and setting a
+distinct process name. It uses the correct loader ABI:
+
+```c
+int UiTestExtension_OnInit(void *lowLevelFunctions, int argc, char **argv);
+void UiTestExtension_OnRun(void);
+```
+
+Build:
 
 ```sh
 ./native/build.sh
-hdc file send native/build/libhoscpy_test.z.so /data/local/tmp/libhoscpy_test.z.so
-hdc shell "/system/bin/uitest start-daemon singleness \
-  --extension-name libhoscpy_test.z.so >/dev/null 2>&1 &"
-hdc shell "ls -l /data/local/tmp/hoscpy_probe_*.log"
 ```
 
-On the tested devices no probe log and no abstract socket appear, while the
-original signed vendor asset works. The source remains useful as a build/loader
-probe if you obtain signing.
+Push and start only under a test environment that has the expected uitest
+test-server/agent caller:
+
+```sh
+hdc file send native/build/libhoscpy_test.z.so /data/local/tmp/libhoscpy_test.z.so
+hdc shell "chmod 755 /data/local/tmp/libhoscpy_test.z.so"
+hdc shell "/system/bin/uitest start-daemon singeness \
+  --extension-name libhoscpy_test.z.so >/dev/null 2>&1 &"
+hdc shell "P=\$(pidof uitest); cat /proc/\$P/comm; grep hoscpy_test /proc/\$P/maps"
+hdc shell "cat /data/local/tmp/hoscpy_probe_*.log"
+```
+
+A loaded probe changes its process name to `hoscpy_probe`, appears in
+`/proc/<pid>/maps`, and writes the probe logs. If the daemon reports
+`Failed to initialize server`, the test is **not** a valid signature test.
 
 ## 4. What a rewrite would require
 
-A full C++ reimplementation (if signing is available) would need:
+A full C++ reimplementation still needs:
 
 - OHOS full-source headers for `OHOS::Rosen::ScreenManager`,
   `VirtualScreenOption`, `DisplayManager` (not in the public NDK), or the public
   `OH_AVScreenCapture` API with appropriate system permissions;
 - native media encoder (`libnative_media_venc`, `libnative_media_core`,
   `libsurface`) and a surface from the virtual screen;
-- the gRPC/protobuf service from `../proto/scrcpy.proto`;
+- the gRPC/protobuf service from `../proto/scrcpy.proto` built against the
+  target OS's system `libprotobuf.z.so`/`libgrpc.z.so` ABI;
 - the same argv parameter parsing and abstract-socket naming;
-- Huawei code signing and per-OS-version ABI testing.
+- per-OS-version ABI testing. Signing may be a distribution/policy requirement,
+  but the uitest loader itself shows no signature check; do not assume it is the
+  blocker without a valid-environment test.
 
 The open-source OpenHarmony `OpenHarmony_Scrcpy` server is a useful reference for
 the capture/encoder plumbing, but it installs to `/system/bin` and requires a
