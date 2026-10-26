@@ -1,0 +1,8 @@
+--- a/src/core/util/posix/thd.cc
++++ b/src/core/util/posix/thd.cc
+@@ -202,4 +202,4 @@
+-#ifndef GPR_ANDROID
++#if !defined(GPR_ANDROID) && !defined(__OHOS__)
+ void Thread::Kill(gpr_thd_id tid) {
+   auto cancel_err = pthread_cancel((pthread_t)tid);
+   if (cancel_err != 0) {

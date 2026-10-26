@@ -5,18 +5,26 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Prefix produced by the static dependency build (see native/server/README.md).
+# Prefixes produced by the static dependency build (see native/server/README.md).
+# OHOS_DEPS, OHOS_GRPC_BUILD, and OHOS_GRPC_INCLUDE can be set in the
+# environment or on the cmake command line.
 set(OHOS_DEPS "$ENV{OHOS_DEPS}" CACHE PATH "Static OHOS dependency prefix")
 if(NOT OHOS_DEPS)
-  set(OHOS_DEPS "/tmp/ohos-build/prefix")
+  message(FATAL_ERROR "OHOS_DEPS is not set; point it at the static dependency install prefix")
+endif()
+if(NOT EXISTS "${OHOS_DEPS}/lib/libprotobuf.a")
+  message(FATAL_ERROR "OHOS_DEPS=${OHOS_DEPS} does not contain lib/libprotobuf.a")
 endif()
 set(OHOS_GRPC_BUILD "$ENV{OHOS_GRPC_BUILD}" CACHE PATH "gRPC static build tree")
 if(NOT OHOS_GRPC_BUILD)
-  set(OHOS_GRPC_BUILD "/tmp/ohos-build/grpc-build")
+  message(FATAL_ERROR "OHOS_GRPC_BUILD is not set; point it at the gRPC static build tree")
+endif()
+if(NOT EXISTS "${OHOS_GRPC_BUILD}/libgrpc++.a")
+  message(FATAL_ERROR "OHOS_GRPC_BUILD=${OHOS_GRPC_BUILD} does not contain libgrpc++.a")
 endif()
 set(OHOS_GRPC_INCLUDE "$ENV{OHOS_GRPC_INCLUDE}" CACHE PATH "gRPC headers")
 if(NOT OHOS_GRPC_INCLUDE)
-  set(OHOS_GRPC_INCLUDE "/home/dev/ohos/openharmony/third_party/grpc/include")
+  set(OHOS_GRPC_INCLUDE "${OHOS_DEPS}/include")
 endif()
 
 add_library(hoscpy_server SHARED

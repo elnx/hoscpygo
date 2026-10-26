@@ -60,13 +60,35 @@ msg 2 type=1 len=635 nals=[nal1]
 | `gen/scrcpy.pb.*` | C++ messages generated from `../../proto/scrcpy.proto` with protoc 33.5 |
 | `CMakeLists.txt`, `toolchain.cmake` | static link / OHOS cross build |
 | `build.sh` | builds this `.so` against an existing dependency prefix |
+| `build-deps.sh` | builds all static dependencies and the extension; env-driven, no user-specific paths |
+| `patches/` | small OHOS compatibility patches applied to dependency sources |
 | `runprobe.c` | direct `dlopen` runner used because standalone `uitest start-daemon` needs a test-server/apiCaller in this environment |
 
 ## Static dependencies
 
-The dependency prefixes used for the verified build are under
-`/tmp/ohos-build`; they are not committed. Sources came from the OpenHarmony
-tree (`/home/dev/ohos/openharmony/third_party`). The version set is:
+The dependency prefixes are not committed. They are built from the OpenHarmony
+source tree; the paths below are supplied by environment variables, not baked
+into the scripts.
+
+Convenience script (builds every dependency, regenerates the protocol, patches
+gRPC for OHOS, then builds the server):
+
+```sh
+export OHOS=/path/to/openharmony
+export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
+./native/server/build-deps.sh
+```
+
+It defaults to `native/server/deps/` (gitignored) and leaves the result at
+`native/server/deps/server-build/hoscpy_server.z.so`. Set `BUILD` to use a
+different tree. The detailed commands below are the same steps, for auditing
+or manual use.
+
+The native dependency/server build is POSIX (Linux, macOS, or WSL). Windows only
+needs Go for `make dist`, because the checked-in `server_static.z.so` is already
+embedded; the Go build does **not** invoke this toolchain.
+
+The version set is:
 
 - abseil-cpp from the OpenHarmony tree
 - protobuf 33.5.0 (`GOOGLE_PROTOBUF_VERSION 6033005`)
@@ -74,119 +96,129 @@ tree (`/home/dev/ohos/openharmony/third_party`). The version set is:
 - re2, c-ares, zlib, OpenSSL 3.0.9
 - OHOS NDK clang 15, `-fPIC`, static libraries, static libc++ in the final `.so`
 
-### Configure commands (exact shape used)
+### Configure commands
 
-Set:
+Set these paths for your machine (the values are examples):
 
 ```sh
-OHOS=/home/dev/ohos/openharmony
-N=/home/dev/command-line-tools/sdk/default/openharmony/native
-B=/tmp/ohos-build
-P=$B/prefix
+export OHOS=/path/to/openharmony                 # full OpenHarmony source tree
+export OHOS_NDK=/path/to/command-line-tools/sdk/default/openharmony/native
+export BUILD=/tmp/hoscpy-deps
+export PREFIX=$BUILD/prefix
+export JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 TOOLCHAIN=$PWD/native/server/toolchain.cmake   # run from the Go repo root
+
+# Used by native/server/build.sh after the dependencies are installed:
+export OHOS_DEPS=$PREFIX
+export OHOS_GRPC_BUILD=$BUILD/grpc-build
+export OHOS_GRPC_INCLUDE=$OHOS/third_party/grpc/include
 ```
+
+Throughout this section, `OHOS`, `OHOS_NDK`, `BUILD`, `PREFIX`, and `JOBS`
+refer to those values; substitute your own directory names.
 
 absl, zlib, c-ares, re2:
 
 ```sh
-cmake -S "$OHOS/third_party/abseil-cpp" -B "$B/absl-build" -G Ninja \
+cmake -S "$OHOS/third_party/abseil-cpp" -B "$BUILD/absl-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$P" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DABSL_ENABLE_INSTALL=ON -DABSL_PROPAGATE_CXX_STD=ON -DBUILD_TESTING=OFF
-cmake --build "$B/absl-build" -j 72 && cmake --install "$B/absl-build"
+cmake --build "$BUILD/absl-build" -j "$JOBS" && cmake --install "$BUILD/absl-build"
 
-cmake -S "$OHOS/third_party/zlib" -B "$B/zlib-build" -G Ninja \
+cmake -S "$OHOS/third_party/zlib" -B "$BUILD/zlib-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$P" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DZLIB_BUILD_SHARED=OFF -DZLIB_BUILD_TESTING=OFF
-cmake --build "$B/zlib-build" -j 72 && cmake --install "$B/zlib-build"
+cmake --build "$BUILD/zlib-build" -j "$JOBS" && cmake --install "$BUILD/zlib-build"
 
-cmake -S "$OHOS/third_party/cares" -B "$B/cares-build" -G Ninja \
+cmake -S "$OHOS/third_party/cares" -B "$BUILD/cares-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$P" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DCARES_STATIC=ON -DCARES_SHARED=OFF -DCARES_BUILD_TESTS=OFF \
   -DCARES_BUILD_TOOLS=OFF
-cmake --build "$B/cares-build" -j 72 && cmake --install "$B/cares-build"
+cmake --build "$BUILD/cares-build" -j "$JOBS" && cmake --install "$BUILD/cares-build"
 
-cmake -S "$OHOS/third_party/re2" -B "$B/re2-build" -G Ninja \
+cmake -S "$OHOS/third_party/re2" -B "$BUILD/re2-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$P" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-  -DRE2_BUILD_TESTING=OFF -DCMAKE_FIND_ROOT_PATH="$P;$N/sysroot" \
-  -Dabsl_DIR="$P/lib/cmake/absl"
-cmake --build "$B/re2-build" -j 72 && cmake --install "$B/re2-build"
+  -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DRE2_BUILD_TESTING=OFF -DCMAKE_FIND_ROOT_PATH="$PREFIX;$OHOS_NDK/sysroot" \
+  -Dabsl_DIR="$PREFIX/lib/cmake/absl"
+cmake --build "$BUILD/re2-build" -j "$JOBS" && cmake --install "$BUILD/re2-build"
 ```
 
 OpenSSL (out-of-tree; `no-asm` avoids aarch64 assembler assumptions):
 
 ```sh
-mkdir -p "$B/openssl-build" && cd "$B/openssl-build"
-CC="$N/llvm/bin/aarch64-unknown-linux-ohos-clang --sysroot=$N/sysroot -fPIC" \
-CXX="$N/llvm/bin/aarch64-unknown-linux-ohos-clang++ --sysroot=$N/sysroot -fPIC" \
-AR="$N/llvm/bin/llvm-ar" RANLIB="$N/llvm/bin/llvm-ranlib" \
+mkdir -p "$BUILD/openssl-build" && cd "$BUILD/openssl-build"
+CC="$OHOS_NDK/llvm/bin/aarch64-unknown-linux-ohos-clang --sysroot=$OHOS_NDK/sysroot -fPIC" \
+CXX="$OHOS_NDK/llvm/bin/aarch64-unknown-linux-ohos-clang++ --sysroot=$OHOS_NDK/sysroot -fPIC" \
+AR="$OHOS_NDK/llvm/bin/llvm-ar" RANLIB="$OHOS_NDK/llvm/bin/llvm-ranlib" \
 "$OHOS/third_party/openssl/Configure" linux-aarch64 no-shared no-tests no-asm \
-  --prefix="$P" --openssldir="$P/ssl"
-make -j72 && make install_sw
+  --prefix="$PREFIX" --openssldir="$PREFIX/ssl"
+make -j"$JOBS" && make install_sw
 ```
 
 protobuf runtime (cross) and protoc (host):
 
 ```sh
-cmake -S "$OHOS/third_party/protobuf" -B "$B/protobuf-build" -G Ninja \
+cmake -S "$OHOS/third_party/protobuf" -B "$BUILD/protobuf-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$P" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+  -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_BUILD_SHARED_LIBS=OFF \
   -Dprotobuf_BUILD_PROTOC_BINARIES=OFF -Dprotobuf_BUILD_LIBUPB=OFF \
-  -Dprotobuf_ABSL_PROVIDER=package -Dabsl_DIR="$P/lib/cmake/absl" \
-  -DCMAKE_FIND_ROOT_PATH="$P;$N/sysroot"
-cmake --build "$B/protobuf-build" -j 72 && cmake --install "$B/protobuf-build"
+  -Dprotobuf_ABSL_PROVIDER=package -Dabsl_DIR="$PREFIX/lib/cmake/absl" \
+  -DCMAKE_FIND_ROOT_PATH="$PREFIX;$OHOS_NDK/sysroot"
+cmake --build "$BUILD/protobuf-build" -j "$JOBS" && cmake --install "$BUILD/protobuf-build"
 
 # Host protoc must be the same 33.5 version as the runtime.
-cmake -S "$OHOS/third_party/protobuf" -B "$B/host-protobuf" -G Ninja \
+cmake -S "$OHOS/third_party/protobuf" -B "$BUILD/host-protobuf" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -Dprotobuf_BUILD_TESTS=OFF \
   -Dprotobuf_BUILD_SHARED_LIBS=OFF -Dprotobuf_BUILD_PROTOC_BINARIES=ON \
   -Dprotobuf_BUILD_LIBUPB=ON -Dprotobuf_ABSL_PROVIDER=module
-cmake --build "$B/host-protobuf" --target protoc -j 72
+cmake --build "$BUILD/host-protobuf" --target protoc -j "$JOBS"
 ```
 
 Generate the C++ messages (from the Go repo root):
 
 ```sh
 mkdir -p native/server/gen
-"$B/host-protobuf/protoc" -I proto --cpp_out=native/server/gen proto/scrcpy.proto
+"$BUILD/host-protobuf/protoc" -I proto --cpp_out=native/server/gen proto/scrcpy.proto
 ```
 
-gRPC. `thd.cc` uses `pthread_cancel`, which OHOS libc does not provide. The
-build tree was patched with:
-
-```c
-#if !defined(GPR_ANDROID) && !defined(__OHOS__)
-void Thread::Kill(gpr_thd_id tid) {
-```
-
-Then:
+gRPC. `thd.cc` uses `pthread_cancel`, which OHOS libc does not provide. Apply
+the checked-in patch once to the source tree:
 
 ```sh
-cmake -S "$OHOS/third_party/grpc" -B "$B/grpc-build" -G Ninja \
+patch -d "$OHOS/third_party/grpc" -p1 \
+  < native/server/patches/grpc-ohos-pthread-cancel.patch
+```
+
+The patch changes the guard from `#ifndef GPR_ANDROID` to
+`#if !defined(GPR_ANDROID) && !defined(__OHOS__)`.
+
+```sh
+cmake -S "$OHOS/third_party/grpc" -B "$BUILD/grpc-build" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_CXX_STANDARD=17 \
-  -DCMAKE_PREFIX_PATH="$P" -DCMAKE_FIND_ROOT_PATH="$P;$N/sysroot" \
+  -DCMAKE_PREFIX_PATH="$PREFIX" -DCMAKE_FIND_ROOT_PATH="$PREFIX;$OHOS_NDK/sysroot" \
   -DgRPC_BUILD_TESTS=OFF -DgRPC_BUILD_CODEGEN=OFF \
   -DgRPC_BUILD_CSHARP_EXT=OFF -DgRPC_INSTALL=OFF -DBUILD_SHARED_LIBS=OFF \
   -DgRPC_DOWNLOAD_ARCHIVES=OFF -DgRPC_USE_SYSTEMD=OFF \
   -DgRPC_ABSL_PROVIDER=package -DgRPC_CARES_PROVIDER=package \
   -DgRPC_RE2_PROVIDER=package -DgRPC_SSL_PROVIDER=package \
   -DgRPC_ZLIB_PROVIDER=package -DgRPC_PROTOBUF_PROVIDER=package \
-  -DOPENSSL_ROOT_DIR="$P" \
-  -DOPENSSL_INCLUDE_DIR="$P/include" \
-  -DOPENSSL_SSL_LIBRARY="$P/lib/libssl.a" \
-  -DOPENSSL_CRYPTO_LIBRARY="$P/lib/libcrypto.a" \
-  -DZLIB_LIBRARY="$P/lib/libz.a" -DZLIB_INCLUDE_DIR="$P/include" \
-  -Dabsl_DIR="$P/lib/cmake/absl" \
-  -DProtobuf_DIR="$P/lib/cmake/protobuf" \
-  -Dre2_DIR="$P/lib/cmake/re2" \
-  -Dc-ares_DIR="$P/lib/cmake/c-ares" \
-  -Dutf8_range_DIR="$P/lib/cmake/utf8_range"
-cmake --build "$B/grpc-build" --target grpc++ -j 72
+  -DOPENSSL_ROOT_DIR="$PREFIX" \
+  -DOPENSSL_INCLUDE_DIR="$PREFIX/include" \
+  -DOPENSSL_SSL_LIBRARY="$PREFIX/lib/libssl.a" \
+  -DOPENSSL_CRYPTO_LIBRARY="$PREFIX/lib/libcrypto.a" \
+  -DZLIB_LIBRARY="$PREFIX/lib/libz.a" -DZLIB_INCLUDE_DIR="$PREFIX/include" \
+  -Dabsl_DIR="$PREFIX/lib/cmake/absl" \
+  -DProtobuf_DIR="$PREFIX/lib/cmake/protobuf" \
+  -Dre2_DIR="$PREFIX/lib/cmake/re2" \
+  -Dc-ares_DIR="$PREFIX/lib/cmake/c-ares" \
+  -Dutf8_range_DIR="$PREFIX/lib/cmake/utf8_range"
+cmake --build "$BUILD/grpc-build" --target grpc++ -j "$JOBS"
 ```
 
 `native/server/build.sh` builds only the extension. It expects the prefixes
@@ -222,7 +254,7 @@ Build and push:
 
 ```sh
 ./native/server/build.sh
-hdc -s 192.0.2.10:8710 -t <serial> file send \
+hdc -s <hdc-server> -t <serial> file send \
   native/server/build/hoscpy_server.z.so /data/local/tmp/hoscpy_server.z.so
 hdc ... shell "chmod 755 /data/local/tmp/hoscpy_server.z.so"
 ```
@@ -234,7 +266,7 @@ test. Use the direct loader for the probe:
 
 ```sh
 # Build runprobe for aarch64 OHOS
-$N/llvm/bin/aarch64-unknown-linux-ohos-clang --sysroot=$N/sysroot \
+$OHOS_NDK/llvm/bin/aarch64-unknown-linux-ohos-clang --sysroot=$OHOS_NDK/sysroot \
   -O2 -o runprobe native/server/runprobe.c -ldl
 hdc ... file send runprobe /data/local/tmp/runprobe
 hdc ... shell "chmod 755 /data/local/tmp/runprobe"
@@ -248,11 +280,11 @@ The abstract socket is forwarded on the **hdc server host**, not necessarily
 the local machine. For the remote server used here:
 
 ```sh
-hdc -s 192.0.2.10:8710 -t <serial> \
+hdc -s <hdc-server> -t <serial> \
   fport tcp:39501 localabstract:scrcpy_grpc_socket
 ```
 
-Then connect a gRPC client to `192.0.2.10:39501`, call
+Then connect a gRPC client to the forwarded host/port, call
 `ScrcpyService/onStart`, and write `payload["data"].val_bytes` messages to an
 Annex-B file. The `goscrcpy/client` probe used during development did exactly
 this.
