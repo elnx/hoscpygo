@@ -42,6 +42,9 @@ assets are in `embed.FS` and must remain that way (`CGO_ENABLED=0`, one binary).
 8. **No secrets, no hidden network calls.** The UI is fully embedded; do not add
    CDN/external asset URLs. The server binds localhost by default and has no
    authentication.
+9. **Embed only the current target's hdc.** `internal/assets/hdc_<goos>_<arch>.go`
+   has a build-tagged `//go:embed` for one hdc directory. Never reintroduce a
+   blanket `//go:embed hdc`; it adds ~18 MB of unused binaries to every target.
 
 ## Architecture / file map
 
@@ -129,9 +132,9 @@ Go rewrite.
 - Config: `os.UserConfigDir()/hoscpygo/config.json`; override with
   `HOSCPYGO_CONFIG` or `-config`.
 - Cache/extracted binaries: `os.UserCacheDir()/hoscpygo`.
-- `hdc` resolution order: `-hdc`/config → `$HDC` → `PATH` → DevEco paths →
-  embedded hdc extraction (with `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`/`PATH`
-  for libusb).
+- `hdc` resolution order: `-hdc`/config → `$HDC` → `PATH` → embedded hdc for
+  this build target (with `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH`/`PATH` for
+  libusb). A system hdc always wins over the embedded copy.
 - Defaults: mode `auto`, scale 2, 60 fps, 8 Mbps, I-frame 2000 ms, image scale
   0.5, listen `127.0.0.1:8899`.
 - Bitrate on the device command is **bits/s**: `BitRateMbps << 20`.
@@ -156,6 +159,9 @@ Before yielding any non-trivial change:
 - For image changes: `mode:"image"`, confirm JPEG frames and layout/input.
 - For embedded-asset changes: run with a temporary `HOME` and minimal `PATH` to
   force extraction of the embedded hdc (`/api/health` must show the cache path).
+- After hdc/build changes: `strings -a bin/hoscpygo | grep -o 'hdc/[a-z0-9_]*/hdc' | sort -u`
+  must show only the host target (e.g. `hdc/linux_amd64/hdc`); size should be
+  ~27 MB, not ~45 MB.
 - Cross-compile after changing imports/OS-specific code.
 
 Device smoke helpers (use only on test devices; destructive cleanup is opt-in):

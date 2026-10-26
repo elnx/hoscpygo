@@ -33,8 +33,9 @@ func New(bin string, env []string) *Client {
 	return &Client{Bin: bin, Env: env, DefaultTimeout: 12 * time.Second}
 }
 
-// Resolve returns an hdc executable. It prefers an explicit path, then PATH,
-// then a DevEco installation, and finally extracts the embedded hdc binary.
+// Resolve returns an hdc executable. Precedence:
+// explicit -hdc/config path, $HDC, PATH, then the embedded hdc for this target.
+// A system hdc is always preferred over the embedded copy.
 func Resolve(configured string) (bin string, env []string, err error) {
 	if configured != "" {
 		if st, statErr := os.Stat(configured); statErr == nil && !st.IsDir() {
@@ -50,36 +51,7 @@ func Resolve(configured string) (bin string, env []string, err error) {
 	if p, lookErr := exec.LookPath("hdc"); lookErr == nil {
 		return p, os.Environ(), nil
 	}
-	if p := devEcoHDC(); p != "" {
-		return p, os.Environ(), nil
-	}
 	return extractEmbedded()
-}
-
-func devEcoHDC() string {
-	candidates := []string{
-		"command-line-tools/sdk/default/openharmony/toolchains/hdc",
-		"command-line-tools/sdk/default/openharmony/toolchains/hdc.exe",
-	}
-	home, _ := os.UserHomeDir()
-	bases := []string{home, "/opt", "/usr/local"}
-	if runtime.GOOS == "darwin" {
-		bases = append(bases, "/Applications/DevEco-Studio.app/Contents")
-	}
-	if runtime.GOOS == "windows" {
-		if local := os.Getenv("LOCALAPPDATA"); local != "" {
-			bases = append(bases, filepath.Join(local, "Huawei"))
-		}
-	}
-	for _, base := range bases {
-		for _, rel := range candidates {
-			p := filepath.Join(base, rel)
-			if st, err := os.Stat(p); err == nil && !st.IsDir() {
-				return p
-			}
-		}
-	}
-	return ""
 }
 
 func extractEmbedded() (string, []string, error) {

@@ -37,9 +37,9 @@ Requirements on the host:
 
 - Linux, macOS (amd64/arm64) or Windows (amd64).
 - A Chromium browser with H.264 WebCodecs/MSE support (Chrome/Edge).
-- No hdc installation required: the binary contains hdc 3.2.0c + libusb for
-  linux/amd64, darwin/amd64, darwin/arm64 and windows/amd64. A system hdc in
-  `PATH`, `$HDC`, or the DevEco toolchain is preferred when present.
+- hdc resolution order: `-hdc`/config, `$HDC`, `PATH`, then the embedded hdc
+  for the current build target. A system hdc is always preferred. Each target
+  embeds only its own hdc + libusb (~6 MB), not all four platform copies.
 - A device with USB debugging (or a reachable hdc server on port 8710).
 
 Flags:
@@ -69,7 +69,7 @@ make dist
 ```
 
 `CGO_ENABLED=0` is used for every target. Each artifact is a single file with
-the web UI, hdc, hdc's libusb, and all device `.so` assets embedded.
+the web UI, the target's hdc + libusb, and all device `.so` assets embedded.
 
 ## Architecture
 
