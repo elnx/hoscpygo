@@ -130,7 +130,9 @@ probe in `native/server/`) plus a variant entry, not a Go rewrite.
   Seed the UI with `/screenshot` when image mode starts.
 - Touch semantics: Hypium `callHypiumApi`/`Driver.click|swipe|longClick`.
   `Gestures.touchDown/Move/Up` is a no-op on H7; do not switch back to it.
-- Mouse drag: `Gestures` `ButtonLeftDown/Move/Up`. Wheel: `uinput -M -m x y -s ±500`.
+- Mouse buttons: `Gestures` `ButtonLeft/Right/MiddleDown/Move/Up`. The UI maps
+  pointer buttons 0/1/2 and forwards right-click; in mouse mode `contextmenu`
+  must not send Back. Wheel: `uinput -M -m x y -s ±500`.
 - Keys: `uinput -K -d/-u`; text: `uitest uiInput text` with shell quoting
   (`hdc.Quote`).
 - Keep the agent running by default (`KeepAgent=true`); remove fports on session

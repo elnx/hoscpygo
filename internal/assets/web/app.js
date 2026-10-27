@@ -21,6 +21,7 @@ const S = {
   lastBitmap: null,
   lastFrameAt: 0,
   dragging: false,
+  dragButton: "left",
   lastPointer: null,
   moveRAF: 0,
   layoutRoot: null,
@@ -644,17 +645,33 @@ function sendInput(msg) {
   if (S.ws && S.ws.readyState === WebSocket.OPEN) S.ws.send(JSON.stringify(msg));
 }
 
+function mouseMode() {
+  return $("inputMode").value === "mouse";
+}
+
+function pointerButton(ev) {
+  switch (ev.button) {
+    case 0: return "left";
+    case 1: return "middle";
+    case 2: return "right";
+  }
+  return "";
+}
+
 $("screenWrap").addEventListener("pointerdown", (ev) => {
   if (!S.session) return;
-  if (ev.button !== 0) return;
+  const mouse = mouseMode();
+  const button = mouse ? pointerButton(ev) : (ev.button === 0 ? "left" : "");
+  if (!button) return;
   const p = devicePoint(ev);
   if (!p) return;
   ev.preventDefault();
-  S.dragging = true;
   S.lastPointer = p;
+  S.dragging = true;
+  S.dragButton = button;
   $("screenWrap").setPointerCapture(ev.pointerId);
-  if ($("inputMode").value === "mouse") {
-    sendInput({ type: "mouse", event: "down", button: "left", x: p.x, y: p.y });
+  if (mouse) {
+    sendInput({ type: "mouse", event: "down", button, x: p.x, y: p.y });
   } else {
     sendInput({ type: "touch", event: "down", x: p.x, y: p.y });
   }
@@ -668,33 +685,39 @@ $("screenWrap").addEventListener("pointermove", (ev) => {
   if (S.moveRAF) return;
   S.moveRAF = requestAnimationFrame(() => {
     S.moveRAF = 0;
-    if (S.dragging && S.lastPointer) {
-      if ($("inputMode").value === "mouse") {
-        sendInput({ type: "mouse", event: "move", button: "left", x: S.lastPointer.x, y: S.lastPointer.y });
-      } else {
-        sendInput({ type: "touch", event: "move", x: S.lastPointer.x, y: S.lastPointer.y });
-      }
+    if (!S.dragging || !S.lastPointer) return;
+    if (mouseMode()) {
+      sendInput({ type: "mouse", event: "move", button: S.dragButton, x: S.lastPointer.x, y: S.lastPointer.y });
+    } else {
+      sendInput({ type: "touch", event: "move", x: S.lastPointer.x, y: S.lastPointer.y });
     }
   });
 });
 
-function endPointer() {
+function endPointer(ev) {
   if (!S.dragging) return;
+  const mouse = mouseMode();
+  const p = devicePoint(ev) || S.lastPointer;
   S.dragging = false;
-  const p = S.lastPointer;
-  if (p) {
-    if ($("inputMode").value === "mouse") {
-      sendInput({ type: "mouse", event: "up", button: "left", x: p.x, y: p.y });
-    } else {
-      sendInput({ type: "touch", event: "up", x: p.x, y: p.y });
-    }
+  if (S.moveRAF) {
+    cancelAnimationFrame(S.moveRAF);
+    S.moveRAF = 0;
+  }
+  if (!p) return;
+  if (mouse) {
+    sendInput({ type: "mouse", event: "up", button: S.dragButton, x: p.x, y: p.y });
+  } else {
+    sendInput({ type: "touch", event: "up", x: p.x, y: p.y });
   }
 }
+
 $("screenWrap").addEventListener("pointerup", endPointer);
 $("screenWrap").addEventListener("pointercancel", endPointer);
 $("screenWrap").addEventListener("contextmenu", (ev) => {
   ev.preventDefault();
-  if (S.session) sendInput({ type: "key", key: "Back" });
+  if (!S.session) return;
+  if (mouseMode()) return; // right button is forwarded as a real mouse event
+  sendInput({ type: "key", key: "Back" });
 });
 
 let wheelAt = 0;

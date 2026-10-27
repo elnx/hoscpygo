@@ -163,7 +163,7 @@ The 4-byte word is a **magic**, not a session id; using a counter makes
 `captureLayout` time out. Control calls (`Gestures`, `callHypiumApi`) are sent as
 raw JSON. `touchDown/Move/Up` is a no-op on H7; input uses Hypium
 `Driver.click/swipe/longClick` for touch semantics and `Gestures`
-`ButtonLeft*`/`Axis*`/`uinput` for real-time mouse/wheel.
+`ButtonLeft/Right/Middle*`/`Axis*`/`uinput` for real-time mouse/wheel.
 
 ## HTTP/WS API
 
@@ -175,8 +175,9 @@ raw JSON. `touchDown/Move/Up` is a no-op on H7; input uses Hypium
 - `GET/POST /api/config`
 - `GET /ws?session={id}` — binary H.264/JPEG frames; JSON state/errors.
 
-WS input messages: `touch` (`down/move/up`), `tap`, `swipe`, `mouse`, `wheel`,
-`key`, `text`, `rotate`.
+WS input messages: `touch` (`down/move/up`), `tap`, `swipe`, `mouse`
+(`down/move/up`, `button` = `left|middle|right`), `wheel`, `key`, `text`,
+`rotate`.
 
 ## Verified on
 
