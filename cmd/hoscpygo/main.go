@@ -102,7 +102,7 @@ func main() {
 			slog.Warn("open browser", "url", url, "err", err)
 		}
 	}
-	slog.Info("hoscpygo", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "url", url)
+	slog.Info("hoscpygo", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "listen", cfg.Listen, "url", url)
 	if err := ui.ListenAndServe(ctx); err != nil {
 		slog.Error("http server", "err", err)
 	}

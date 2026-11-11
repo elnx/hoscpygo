@@ -361,8 +361,11 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 
 // ListenAndServe runs the HTTP server until ctx is done.
 func (s *Server) ListenAndServe(ctx context.Context) error {
+	ln, err := net.Listen("tcp", s.cfg.Listen)
+	if err != nil {
+		return err
+	}
 	srv := &http.Server{
-		Addr:              s.cfg.Listen,
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -373,8 +376,10 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
 	}()
-	slog.Info("web ui listening", "url", URL(s.cfg.Listen), "hdc", s.hdc.Bin)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	// URL is the browser-openable form (wildcards map to loopback); listen is
+	// the address actually requested, so the two must be labeled separately.
+	slog.Info("web ui listening", "listen", s.cfg.Listen, "url", URL(s.cfg.Listen), "hdc", s.hdc.Bin)
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
