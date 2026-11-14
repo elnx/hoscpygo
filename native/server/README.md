@@ -11,7 +11,7 @@ vendor `.so` with an unsigned, self-built aarch64 OpenHarmony library that:
 - statically links protobuf and gRPC (and libc++), so it does not depend on the
   PC's `libprotobuf.z.so` / `libgrpc*.z.so` ABI.
 
-It was verified on the HarmonyOS PC `<serial>` (API 26, 2880x1920).
+It was verified on a HarmonyOS PC (API 26, 2880x1920).
 
 ## Result
 
