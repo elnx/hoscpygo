@@ -27,10 +27,14 @@ PREFIX=${PREFIX:-"$BUILD/prefix"}
 case "$PREFIX" in /*) ;; *) PREFIX="$ROOT/$PREFIX" ;; esac
 JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}
 TOOLCHAIN="$DIR/toolchain.cmake"
+REPO_ROOT=$(CDPATH= cd -- "$DIR/../.." && pwd)
+# Remap absolute roots in compiler-generated file names; gRPC and OpenSSL
+# override CMAKE_*_FLAGS_INIT, so their flags are set explicitly below.
+export HOSCPY_SOURCE_ROOTS="$OHOS:$REPO_ROOT"
 # The server only uses insecure gRPC transport. Disable xDS registration and
 # let --gc-sections drop the unused xDS code; this substantially reduces the
 # final static server.
-GRPC_COMPILE_FLAGS="--target=aarch64-linux-ohos --sysroot=$OHOS_NDK/sysroot -fPIC -DGRPC_NO_XDS -ffunction-sections -fdata-sections"
+GRPC_COMPILE_FLAGS="--target=aarch64-linux-ohos --sysroot=$OHOS_NDK/sysroot -fPIC -DGRPC_NO_XDS -ffunction-sections -fdata-sections -ffile-prefix-map=$OHOS/= -ffile-prefix-map=$REPO_ROOT/= -ffile-prefix-map=$OHOS_NDK/="
 
 for src in "$OHOS/third_party/abseil-cpp" "$OHOS/third_party/zlib" \
            "$OHOS/third_party/cares" "$OHOS/third_party/re2" \
@@ -85,8 +89,8 @@ mkdir -p "$BUILD/openssl-build"
 if [ ! -f "$BUILD/openssl-build/Makefile" ]; then
   (
     cd "$BUILD/openssl-build"
-    CC="$OHOS_NDK/llvm/bin/aarch64-unknown-linux-ohos-clang --sysroot=$OHOS_NDK/sysroot -fPIC" \
-    CXX="$OHOS_NDK/llvm/bin/aarch64-unknown-linux-ohos-clang++ --sysroot=$OHOS_NDK/sysroot -fPIC" \
+    CC="$OHOS_NDK/llvm/bin/aarch64-unknown-linux-ohos-clang --sysroot=$OHOS_NDK/sysroot -fPIC -ffile-prefix-map=$OHOS/= -ffile-prefix-map=$REPO_ROOT/= -ffile-prefix-map=$OHOS_NDK/=" \
+    CXX="$OHOS_NDK/llvm/bin/aarch64-unknown-linux-ohos-clang++ --sysroot=$OHOS_NDK/sysroot -fPIC -ffile-prefix-map=$OHOS/= -ffile-prefix-map=$REPO_ROOT/= -ffile-prefix-map=$OHOS_NDK/=" \
     AR="$OHOS_NDK/llvm/bin/llvm-ar" \
     RANLIB="$OHOS_NDK/llvm/bin/llvm-ranlib" \
       "$OHOS/third_party/openssl/Configure" linux-aarch64 \

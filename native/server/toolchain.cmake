@@ -18,8 +18,26 @@ set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(CMAKE_C_COMPILER "${OHOS_NDK}/llvm/bin/aarch64-unknown-linux-ohos-clang")
 set(CMAKE_CXX_COMPILER "${OHOS_NDK}/llvm/bin/aarch64-unknown-linux-ohos-clang++")
 set(CMAKE_SYSROOT "${OHOS_NDK}/sysroot")
-set(CMAKE_C_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT} -fPIC")
-set(CMAKE_CXX_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT} -fPIC")
+# Strip absolute source/build roots from __FILE__ constants and debug info.
+# Otherwise the committed device asset embeds the builder's local directory
+# layout (and, on a normal workstation, the user name).
+get_filename_component(_hoscpy_src_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+get_filename_component(_hoscpy_src_real "${CMAKE_CURRENT_LIST_DIR}/../.." REALPATH)
+set(_hoscpy_path_maps
+  "-ffile-prefix-map=${_hoscpy_src_root}/="
+  "-ffile-prefix-map=${_hoscpy_src_real}/="
+  "-ffile-prefix-map=${OHOS_NDK}/=")
+if(DEFINED ENV{HOSCPY_SOURCE_ROOTS})
+  string(REPLACE ":" ";" _hoscpy_extra_roots "$ENV{HOSCPY_SOURCE_ROOTS}")
+  foreach(_root IN LISTS _hoscpy_extra_roots)
+    if(_root)
+      list(APPEND _hoscpy_path_maps "-ffile-prefix-map=${_root}/=")
+    endif()
+  endforeach()
+endif()
+string(JOIN " " _hoscpy_path_map_flags ${_hoscpy_path_maps})
+set(CMAKE_C_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT} -fPIC ${_hoscpy_path_map_flags}")
+set(CMAKE_CXX_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT} -fPIC ${_hoscpy_path_map_flags}")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "--target=aarch64-linux-ohos --sysroot=${CMAKE_SYSROOT}")
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 set(CMAKE_FIND_ROOT_PATH "${CMAKE_SYSROOT}")
