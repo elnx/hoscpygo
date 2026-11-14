@@ -196,7 +196,9 @@ Known timing constraints: a loader rejection aborts a variant in ~1-2 s
 (the daemon exits within ~0.5 s and its hilog line is checked in parallel with
 the process poll), a loaded server that never paints is cut off after
 `firstFrameTimeout` (3 s), and the agent/layout first call takes ~2 s; do not
-"fix" slowness by removing socket/process waits.
+"fix" slowness by removing socket/process waits. The loader check must stay
+tag-filtered (`hilog -x -T UiTestKit_Addon`): an unfiltered `hilog -x` dump
+costs ~3.5 s and hilog's `-e` regex ~13 s on a device with a large buffer.
 
 ## Frontend
 

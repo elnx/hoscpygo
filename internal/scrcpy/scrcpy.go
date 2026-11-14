@@ -448,8 +448,14 @@ func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern,
 }
 
 // lastLoadLine returns the newest device-side Dlopen failure line, or "".
+//
+// The tag filter matters: on a device with a large hilog buffer (OH 7.1 held
+// ~260k lines) an unfiltered `hilog -x` dump costs ~3.5 s per poll and hilog's
+// own -e regex filter is even slower (~13 s). The extension loader tag is
+// UiTestKit_Addon in every observed uitest build, and filtering by it brings
+// the check down to ~0.3 s.
 func lastLoadLine(ctx context.Context, h *hdc.Client, server, sn string) string {
-	out, err := h.Shell(ctx, server, sn, "hilog -x 2>/dev/null | grep -a 'Dlopen /data/local/tmp' | tail -1", 6*time.Second)
+	out, err := h.Shell(ctx, server, sn, "hilog -x -T UiTestKit_Addon 2>/dev/null | grep -a 'Dlopen /data/local/tmp' | tail -1", 6*time.Second)
 	if err != nil {
 		return ""
 	}

@@ -116,10 +116,12 @@ matters: an hdc forward created too early silently points at nothing.
 
 Video startup is bounded per variant. A rejected `.so` (XPM denial or symbol
 relocation) is detected from the vanished daemon and its hilog line within a
-second or two; a server that loads but never paints gets `firstFrameTimeout`
-(3 s) before the next variant is tried. Auto mode therefore reaches image
-capture in seconds instead of tens of seconds. On exit, device cleanup is
-bounded to 5 s and a second Ctrl-C exits immediately.
+second or two; the check filters by the `UiTestKit_Addon` tag because a full
+`hilog -x` dump costs seconds on devices with large buffers. A server that
+loads but never paints gets `firstFrameTimeout` (3 s) before the next variant
+is tried. Auto mode therefore reaches image capture in seconds instead of
+tens of seconds. On exit, device cleanup is bounded to 5 s and a second
+Ctrl-C exits immediately.
 
 ## Protocol summary
 
@@ -152,7 +154,15 @@ Device server support is now limited to current H7/uitest systems:
 |---|---|
 | HarmonyOS PC / dev devices | `server_static` → `server_unix_6.5` → `6.4` → `6.3.1` |
 | H7 phone, locked XPM | unsigned static is rejected with `Permission denied`; vendor fallback + image mode |
+| OpenHarmony 7.1 / uitest 7.1.0.2 | all embedded servers fail relocation: `google::protobuf::internal::MapFieldBase::SetMapDirty` is gone; image mode only |
 | ≤ uitest 6.0.2.1 | no video server; image mode remains available |
+
+DevEco Testing's recorder assets (`devicetest/res/recorder/libscrcpy_server1-4`)
+were evaluated as newer candidates. They are the same HOScrcpy generation:
+`server1-3` are byte-identical to the HOScrcpy jar's assets, and `server4` is an
+alternate 6.x build (the jar's `server_5.10` shares its protobuf ABI). All fail
+on OpenHarmony 7.1: `server2-4`/`5.10` with the `MapFieldBase::SetMapDirty`
+relocation error, `server1` with an old absl symbol. None is embedded.
 
 The static server is unsigned. Some H7 production devices enforce XPM/signature
 checks on `dlopen`; on those devices the vendor fallback or image mode is
