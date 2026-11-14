@@ -122,6 +122,13 @@ listening on unix-abstract:scrcpy_grpc_socket
 
 - Requires `uid=0` in the hdc shell and an aarch64 device. Unrooted devices
   keep the uitest vendor path or image mode.
+- On a non-root shell (`uid=2000(shell)`, `u:r:sh:s0`) the loader cannot even
+  be executed: files in `/data/local/tmp` carry
+  `u:object_r:data_local_tmp:s0` and the `sh` domain lacks execute permission.
+  A copied signed `/system/bin/toybox` is denied the same way, as is invoking
+  `/lib/ld-musl-aarch64.so.1` directly, so this is SELinux domain policy, not
+  XPM or the binary's bytes. Such devices have no `su`; hoscpygo skips the
+  standalone path via the `id -u` check and never reaches `dlopen`.
 - SELinux enforcing builds may deny display capture from the root process
   context; the host then falls back to the extension variants.
 - `server_static.z.so` is still the prototype described in
