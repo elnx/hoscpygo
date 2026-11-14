@@ -19,6 +19,9 @@ available, with an **MSE/jmuxer** fallback. The Go process never decodes video.
 - `-s host[:port]` to use one remote hdc server exclusively, including its
   `hdc list targets` results.
 - H.264 video stream (device-side hardware encoder, Annex-B AUs).
+- On rooted aarch64 devices, a standalone loader runs the self-built server
+  directly, bypassing both uitest's XPM rejection and vendor-library ABI
+  mismatches on newer HarmonyOS/OpenHarmony versions.
 - JPEG image-stream fallback (change-driven, typically 1–8 fps) for devices or
   networks where the video extension is unavailable.
 - Touch/tap/swipe, mouse drag, wheel, keyboard, toolbar keys, text/IME paste.
@@ -105,7 +108,7 @@ Two capture paths:
 | | Video | Image |
 |---|---|---|
 | Device asset | `internal/assets/device/server_static.z.so` (fallback `server_unix_6.5.z.so`) | `agent_1.2.3.so` |
-| Loader | `/system/bin/uitest start-daemon singleness --extension-name hoscpy_server.z.so ...` | `uitest start-daemon singleness --extension-name hoscpy_agent.so` |
+| Loader | root shell: `hoscpy_loader` runs the static server directly; otherwise `/system/bin/uitest start-daemon singleness --extension-name hoscpy_server.z.so ...` | `uitest start-daemon singleness --extension-name hoscpy_agent.so` |
 | Transport | gRPC over `localabstract:scrcpy_grpc_socket` | raw JSON + JPEG on a separate forwarded socket |
 | Protocol | `ScrcpyService/onStart` server stream; `payload["data"].val_bytes` | `Captures.startCaptureScreen` |
 | Rate | encoder rate (static screens send nothing) | change-driven, typically 1–8 fps |
@@ -122,6 +125,33 @@ loads but never paints gets `firstFrameTimeout` (3 s) before the next variant
 is tried. Auto mode therefore reaches image capture in seconds instead of
 tens of seconds. On exit, device cleanup is bounded to 5 s and a second
 Ctrl-C exits immediately.
+
+### Rooted devices (standalone video)
+
+When `hdc shell id -u; uname -m` reports `0` / `aarch64`, `Start` first tries
+the standalone backend before any uitest variant:
+
+```sh
+# pushed by hoscpygo
+/data/local/tmp/hoscpy_loader /data/local/tmp/hoscpy_server.z.so \
+  -scale 2 -frameRate 60 -bitRate 8388608 -p 5000 -iFrameInterval 2000
+```
+
+`hoscpy_loader` is a 6 KB unsigned aarch64 launcher built from
+`native/loader/loader.c` and embedded in the Go binary. It `dlopen`s the
+self-built server and calls the same `UiTestExtension_OnInit` /
+`UiTestExtension_OnRun` entry points that `uitest` uses. Because the loader is
+our own ordinary process, the XPM check that rejects the unsigned server inside
+the signed `uitest` domain does not apply; because the static server links no
+system protobuf/gRPC/Rosen libraries, the vendor ABI failures disappear too.
+The same `scrcpy_grpc_socket` and gRPC protocol are used, so the frontend and
+session code are unchanged. If the loader fails (for example SELinux denies
+display capture), the normal uitest variants and image fallback still run.
+
+LD_PRELOAD is not used and does not work here: the OHOS loader ignores
+preloads for signed binaries such as `uitest`. See
+[`native/loader/README.md`](native/loader/README.md) for the loader internals
+and the measured evidence.
 
 ## Protocol summary
 
@@ -154,7 +184,7 @@ Device server support is now limited to current H7/uitest systems:
 |---|---|
 | HarmonyOS PC / dev devices | `server_static` → `server_unix_6.5` → `6.4` → `6.3.1` |
 | H7 phone, locked XPM | unsigned static is rejected with `Permission denied`; vendor fallback + image mode |
-| OpenHarmony 7.1 / uitest 7.1.0.2 | all embedded servers fail relocation: `google::protobuf::internal::MapFieldBase::SetMapDirty` is gone; image mode only |
+| OpenHarmony 7.1 / uitest 7.1.0.2 | root shell: standalone loader + `server_static` streams video; otherwise every embedded server fails relocation (`MapFieldBase::SetMapDirty` is gone) and image mode is used |
 | ≤ uitest 6.0.2.1 | no video server; image mode remains available |
 
 DevEco Testing's recorder assets (`devicetest/res/recorder/libscrcpy_server1-4`)
@@ -165,8 +195,11 @@ on OpenHarmony 7.1: `server2-4`/`5.10` with the `MapFieldBase::SetMapDirty`
 relocation error, `server1` with an old absl symbol. None is embedded.
 
 The static server is unsigned. Some H7 production devices enforce XPM/signature
-checks on `dlopen`; on those devices the vendor fallback or image mode is
-required. Image mode is verified on the H7 test device.
+checks on `dlopen` inside the `uitest` domain; on those devices use a root
+shell (the standalone loader runs the same server outside that domain), the
+vendor fallback, or image mode. Image mode is verified on the H7 test device;
+the standalone video path is verified on an OpenHarmony 7.1 device with a root
+hdc shell.
 
 Legacy TCP servers and old/x86 agents have been removed from the embedded
 assets. `agent_1.2.3` is the only embedded uitest agent. Agent frames use:

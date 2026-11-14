@@ -73,7 +73,7 @@ func TestVideoFailureHint(t *testing.T) {
 func TestWaitForServerReadyDetectsMissedDaemon(t *testing.T) {
 	start := time.Now()
 	load, err := waitForServerReady(context.Background(), fakeHDC(t), "", "SN",
-		ExtensionName, "scrcpy_grpc_socket", true, "older loader line")
+		ExtensionName, "scrcpy_grpc_socket", true, "older loader line", true)
 	if err == nil {
 		t.Fatal("expected failure")
 	}
@@ -95,5 +95,26 @@ func TestLoaderErrorIgnoresBaseline(t *testing.T) {
 	err := loaderError("extension did not start", "new line", "old line")
 	if !strings.Contains(err.Error(), "new line") || strings.Contains(err.Error(), "old line") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestStandaloneTarget(t *testing.T) {
+	cases := []struct {
+		out  string
+		want bool
+	}{
+		{"0\naarch64\n", true},
+		{"0\narm64\n", true},
+		{"0\nAArch64\n", true},
+		{"2000\naarch64\n", false},
+		{"0\nx86_64\n", false},
+		{"2000\nx86_64\n", false},
+		{"", false},
+		{"0\n", false},
+	}
+	for _, c := range cases {
+		if got := standaloneTarget(c.out); got != c.want {
+			t.Fatalf("standaloneTarget(%q) = %v, want %v", c.out, got, c.want)
+		}
 	}
 }

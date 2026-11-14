@@ -235,14 +235,20 @@ func (c *Client) KillPIDs(ctx context.Context, server, sn string, pids []int) {
 }
 
 // StartBackground starts a device command in the background and returns after
-// the shell has accepted it.
+// the shell has accepted it. Output is discarded.
 func (c *Client) StartBackground(ctx context.Context, server, sn, command string) error {
+	return c.StartBackgroundTo(ctx, server, sn, command, "/dev/null")
+}
+
+// StartBackgroundTo is StartBackground with the command's stdout/stderr
+// redirected to logPath (truncated on every start). The redirect is required:
+// hdc keeps the shell channel open while a child inherits the pipes, which
+// would make this call block until the daemon exits. The daemon itself must
+// outlive the shell.
+func (c *Client) StartBackgroundTo(ctx context.Context, server, sn, command, logPath string) error {
 	command = strings.TrimSpace(command)
 	command = strings.TrimSpace(strings.TrimSuffix(command, "&"))
-	// Redirect stdout/stderr: hdc keeps the shell channel open while a child
-	// inherits the pipes, which would make this call block until the daemon
-	// exits. The daemon itself must outlive the shell.
-	command += " >/dev/null 2>&1 &"
+	command += " >" + Quote(logPath) + " 2>&1 &"
 	_, err := c.Shell(ctx, server, sn, command, 10*time.Second)
 	return err
 }

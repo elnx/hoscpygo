@@ -3,7 +3,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 BIN := hoscpygo
 
 .PHONY: all build run test vet fmt proto dist clean linux darwin windows \
-	native-src native-deps native-server native-asset dist-native
+	native-src native-deps native-server native-asset native-loader dist-native
 
 all: build
 
@@ -35,6 +35,7 @@ dist: linux darwin windows
 #   make native-deps   # build absl/protobuf/gRPC/... + server (incremental)
 #   make native-server # rebuild the server against existing native deps
 #   make native-asset  # strip + copy the server into internal/assets/device/
+#   make native-loader # rebuild the standalone root loader asset
 #   make dist-native   # one-shot: submodules + deps + asset + all Go dist binaries
 #
 # native-deps/native-server are intentionally phony: CMake/Ninja does the real
@@ -44,6 +45,7 @@ OHOS ?= native/server/ohos-src
 NATIVE_BUILD ?= native/server/build
 NATIVE_ASSET ?= internal/assets/device/server_static.z.so
 NATIVE_STRIP ?= $(if $(OHOS_NDK),$(OHOS_NDK)/llvm/bin/llvm-strip,llvm-strip)
+LOADER_ASSET ?= internal/assets/device/hoscpy_loader
 NATIVE_SUBMODULES := $(shell git config -f .gitmodules --get-regexp '^submodule\..*\.path$$' 2>/dev/null | cut -d' ' -f2)
 
 native-src:
@@ -58,6 +60,16 @@ native-server: native-src
 native-asset: native-server
 	$(NATIVE_STRIP) --strip-unneeded $(NATIVE_BUILD)/hoscpy_server.z.so
 	cp $(NATIVE_BUILD)/hoscpy_server.z.so $(NATIVE_ASSET)
+
+# The standalone loader is tiny and depends only on the NDK, not on the
+# OpenHarmony third_party submodules. Its output is committed because ordinary
+# builds embed it.
+native-loader:
+	@test -n "$(OHOS_NDK)" || { echo "set OHOS_NDK to the OpenHarmony native SDK" >&2; exit 2; }
+	"$(OHOS_NDK)/llvm/bin/aarch64-unknown-linux-ohos-clang" \
+		--target=aarch64-linux-ohos --sysroot="$(OHOS_NDK)/sysroot" \
+		-O2 -s -o $(LOADER_ASSET) native/loader/loader.c -ldl
+	file $(LOADER_ASSET)
 
 dist-native: native-deps
 	$(MAKE) native-asset

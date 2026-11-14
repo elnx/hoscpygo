@@ -18,6 +18,8 @@ by the repository's MIT LICENSE and may have different redistribution terms.
      c-ares, zlib, and OpenSSL; those components remain under their respective
      upstream licenses (Apache-2.0, BSD-style, and the OpenSSL license). The
      source and build instructions are in native/server/.
+   - hoscpy_loader is original code from native/loader/loader.c and is covered
+     by the repository's MIT license, not by Huawei's terms.
 
 2. jmuxer (internal/assets/web/jmuxer.min.js)
    - jmuxer, MIT License, https://github.com/samir3629/jmuxer.

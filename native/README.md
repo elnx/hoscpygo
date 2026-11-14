@@ -235,5 +235,36 @@ Practical findings from the H7 test device:
   (`binary-sign-tool.jar` on Java platforms). It cannot reproduce the Huawei
   vendor signature without Huawei's private key and certificate chain.
 
-For this H7, use image mode when video is blocked by XPM; the image path was
-verified streaming on the same device.
+## 6. Standalone root loader
+
+XPM is enforced for the signed `uitest` domain, not for every process. A plain
+process started by a root shell can `dlopen` the same unsigned
+`server_static.z.so` successfully. `hoscpygo` therefore tries a standalone
+backend before the uitest variants when `hdc shell` reports `uid=0` and
+`aarch64`:
+
+```text
+/data/local/tmp/hoscpy_loader /data/local/tmp/hoscpy_server.z.so \
+  -scale 2 -frameRate 60 -bitRate 8388608 -p 5000 -iFrameInterval 2000
+```
+
+`hoscpy_loader` is built from [`loader/loader.c`](loader/loader.c) and embedded
+as `internal/assets/device/hoscpy_loader`. It calls the same
+`UiTestExtension_OnInit(void *, int, char **)` / `UiTestExtension_OnRun()`
+entry points as `uitest`; see [`loader/README.md`](loader/README.md) for the
+implementation and verification details.
+
+Measured on an OpenHarmony 7.1 / uitest 7.1.0.2 device with a root shell:
+`@scrcpy_grpc_socket` appears within ~1 s and gRPC `onStart` streams H.264.
+The standalone path also removes the ABI problem entirely because the static
+server links no system protobuf/gRPC/Rosen libraries.
+
+LD_PRELOAD into `uitest` is not an alternative: the loader ignores preloads
+for the signed `uitest`/`hilog` binaries (verified with an unsigned probe whose
+constructor ran under `/bin/toybox` but not under `uitest`), and the missing
+symbol set is far larger than an ABI shim (protobuf internals, the removed
+Rosen virtual-screen family, old absl LTS symbols).
+
+For H7 devices whose shell is not root, use image mode when video is blocked
+by XPM; the image path was verified streaming on the same device.
+

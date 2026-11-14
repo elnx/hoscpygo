@@ -49,6 +49,11 @@ const (
 	// paints would otherwise stall auto mode before the image fallback; image
 	// capture seeds a screenshot and follows screen changes.
 	firstFrameTimeout = 3 * time.Second
+
+	// staticAsset is our self-built server. It has no libprotobuf/libgrpc or
+	// Rosen virtual-screen dependency, so it also works through the standalone
+	// loader on OS versions where every signed vendor server fails relocation.
+	staticAsset = "server_static.z.so"
 )
 
 var versionRe = regexp.MustCompile(`\d{1,3}(?:\.\d{1,3}){1,3}`)
@@ -65,7 +70,7 @@ type Variant struct {
 // longer shipped.
 func VariantsFor(_ string) []Variant {
 	return []Variant{
-		{Asset: "server_static.z.so", Unix: true},
+		{Asset: staticAsset, Unix: true},
 		{Asset: "server_unix_6.5.z.so", Unix: true},
 		{Asset: "server_unix_6.4.z.so", Unix: true},
 		{Asset: "server_unix_6.3.1.z.so", Unix: true},
@@ -140,6 +145,18 @@ func Start(ctx context.Context, opts Options) (*Stream, error) {
 	uitestVer := detectUitestVersion(ctx, opts.HDC, opts.Server, opts.SN)
 	slog.Info("selecting video server", "sn", opts.SN, "uitest", uitestVer)
 	var errs []string
+	// A root shell can run our own loader, which bypasses both uitest's XPM
+	// rejection of the unsigned static server and the signed vendor servers'
+	// protobuf/Rosen ABI mismatch on newer systems.
+	if standaloneAvailable(ctx, opts.HDC, opts.Server, opts.SN) {
+		slog.Info("trying standalone video server", "sn", opts.SN)
+		if s, err := startStandalone(ctx, opts); err == nil {
+			return s, nil
+		} else {
+			slog.Warn("standalone video server failed", "sn", opts.SN, "err", err)
+			errs = append(errs, "standalone: "+err.Error())
+		}
+	}
 	lastLoad := lastLoadLine(ctx, opts.HDC, opts.Server, opts.SN)
 	for _, v := range VariantsFor(uitestVer) {
 		s, load, err := startVariant(ctx, opts, v, lastLoad)
@@ -204,23 +221,33 @@ func startVariant(ctx context.Context, opts Options, v Variant, lastLoad string)
 	if !v.Unix {
 		socketName = "tcp:5000"
 	}
-	load, err := waitForServerReady(ctx, opts.HDC, opts.Server, opts.SN, ExtensionName, socketName, v.Unix, lastLoad)
+	load, err := waitForServerReady(ctx, opts.HDC, opts.Server, opts.SN, ExtensionName, socketName, v.Unix, lastLoad, true)
 	if err != nil {
 		killServer(ctx, opts)
 		return nil, load, err
 	}
+	stream, err := connectStream(ctx, opts, Meta{Variant: v.Asset, Unix: v.Unix})
+	if err != nil {
+		return nil, load, err
+	}
+	return stream, load, nil
+}
+
+// connectStream forwards the server's socket, opens the H.264 gRPC stream, and
+// registers shutdown cleanup. The caller has already started the server.
+func connectStream(ctx context.Context, opts Options, meta Meta) (*Stream, error) {
 	port, err := allocPort(opts.Server)
 	if err != nil {
 		killServer(ctx, opts)
-		return nil, load, err
+		return nil, err
 	}
 	target := "tcp:5000"
-	if v.Unix {
+	if meta.Unix {
 		target = "localabstract:scrcpy_grpc_socket"
 	}
 	if err := opts.HDC.Fport(ctx, opts.Server, opts.SN, fmt.Sprintf("tcp:%d", port), target); err != nil {
 		killServer(ctx, opts)
-		return nil, load, fmt.Errorf("fport: %w", err)
+		return nil, fmt.Errorf("fport: %w", err)
 	}
 	cleanupPort := func() {
 		_ = opts.HDC.RemoveFport(context.Background(), opts.Server, opts.SN, fmt.Sprintf("tcp:%d", port), target)
@@ -230,11 +257,12 @@ func startVariant(ctx context.Context, opts Options, v Variant, lastLoad string)
 		host = "127.0.0.1"
 	}
 	targetAddr := net.JoinHostPort(host, strconv.Itoa(port))
-	stream, client, conn, err := openStream(ctx, targetAddr, v, port)
+	meta.Port = port
+	stream, client, conn, err := openStream(ctx, targetAddr, meta)
 	if err != nil {
 		killServer(ctx, opts)
 		cleanupPort()
-		return nil, load, err
+		return nil, err
 	}
 	// Ask for an immediate keyframe; static screens otherwise stay blank.
 	go func() {
@@ -252,29 +280,31 @@ func startVariant(ctx context.Context, opts Options, v Variant, lastLoad string)
 		killServer(context.Background(), opts)
 		cleanupPort()
 	}
-	return stream, load, nil
+	return stream, nil
 }
 
 func pushServer(ctx context.Context, opts Options, v Variant) error {
-	data, err := assets.Device(v.Asset)
+	return pushFile(ctx, opts, v.Asset, "/data/local/tmp/"+ExtensionName)
+}
+
+// pushFile sends an embedded device asset to remote when its md5 differs and
+// forces the executable bit. hdc preserves the local cache mode (0644), and
+// the uitest loader rejects non-executable extensions.
+func pushFile(ctx context.Context, opts Options, assetName, remote string) error {
+	data, err := assets.Device(assetName)
 	if err != nil {
-		return fmt.Errorf("embedded %s: %w", v.Asset, err)
+		return fmt.Errorf("embedded %s: %w", assetName, err)
 	}
-	local, err := writeCache(v.Asset, data)
+	local, err := writeCache(assetName, data)
 	if err != nil {
 		return err
 	}
-	remote := "/data/local/tmp/" + ExtensionName
-	localMD5 := md5Hex(data)
-	if opts.HDC.MD5(ctx, opts.Server, opts.SN, remote) != localMD5 {
+	if opts.HDC.MD5(ctx, opts.Server, opts.SN, remote) != md5Hex(data) {
 		_, _ = opts.HDC.Shell(ctx, opts.Server, opts.SN, "rm -f "+remote, 8*time.Second)
 		if err := opts.HDC.FileSend(ctx, opts.Server, opts.SN, local, remote); err != nil {
-			return fmt.Errorf("push server: %w", err)
+			return fmt.Errorf("push %s: %w", assetName, err)
 		}
 	}
-	// hdc preserves the local cache mode (0644). The uitest loader has been
-	// observed to reject non-executable extension files, so normalize it
-	// whether the file was just pushed or already matched.
 	_, _ = opts.HDC.Shell(ctx, opts.Server, opts.SN, "chmod 755 "+remote, 8*time.Second)
 	return nil
 }
@@ -299,7 +329,7 @@ func md5Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func openStream(ctx context.Context, addr string, v Variant, port int) (*Stream, pb.ScrcpyServiceClient, *grpc.ClientConn, error) {
+func openStream(ctx context.Context, addr string, meta Meta) (*Stream, pb.ScrcpyServiceClient, *grpc.ClientConn, error) {
 	dialCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	conn, err := grpc.DialContext(dialCtx, addr,
@@ -367,7 +397,7 @@ func openStream(ctx context.Context, addr string, v Variant, port int) (*Stream,
 	// The first frame may have been dropped if frames was full; refill it by
 	// waiting for the next message is handled by the caller. In practice the
 	// channel is empty at this point.
-	s := &Stream{Frames: frames, Errors: errs, Meta: Meta{Variant: v.Asset, Port: port, Unix: v.Unix}, client: client}
+	s := &Stream{Frames: frames, Errors: errs, Meta: meta, client: client}
 	// Close must also cancel the stream context, so wrap the existing closeFn.
 	prevClose := s.closeFn
 	s.closeFn = func() {
@@ -393,17 +423,19 @@ func allocPort(server string) (int, error) {
 	return 0, errors.New("no free remote port")
 }
 
-// waitForServerReady waits for the extension daemon and its socket. When the
-// loader rejects the .so, the daemon logs the reason and exits within ~0.5 s.
-// Polling ps alone cannot be trusted to observe that short-lived process, so
-// the newest Dlopen line is also checked; a line newer than baseline aborts the
-// wait at once. baseline is the newest line observed before this variant was
-// launched, which keeps a previous variant's failure from being mistaken for
-// this one.
+// waitForServerReady waits for the server process and its socket. When the
+// uitest loader rejects a variant .so, the daemon logs the reason and exits
+// within ~0.5 s. Polling ps alone cannot be trusted to observe that short-lived
+// process, so when watchDlopen is set the newest Dlopen line is also checked; a
+// line newer than baseline aborts the wait at once. baseline is the newest line
+// observed before this variant was launched, which keeps a previous variant's
+// failure from being mistaken for this one.
 //
-// The returned string is the newest loader line when it differs from baseline;
-// callers thread it back as the next variant's baseline.
-func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern, socketName string, unix bool, baseline string) (string, error) {
+// The standalone loader writes its diagnostics to its own log file, not hilog,
+// so its call passes watchDlopen=false. The returned string is the newest
+// loader line when it differs from baseline; callers thread it back as the next
+// variant's baseline.
+func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern, socketName string, unix bool, baseline string, watchDlopen bool) (string, error) {
 	deadline := time.Now().Add(processStartTimeout)
 	var pid int
 	var lastCheck time.Time
@@ -412,7 +444,7 @@ func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern,
 			pid = pids[0]
 			break
 		}
-		if time.Since(lastCheck) >= 500*time.Millisecond {
+		if watchDlopen && time.Since(lastCheck) >= 500*time.Millisecond {
 			lastCheck = time.Now()
 			if line := lastLoadLine(ctx, h, server, sn); line != "" && line != baseline {
 				return line, loaderError("extension failed to load", line, baseline)
@@ -425,7 +457,10 @@ func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern,
 		}
 	}
 	if pid == 0 {
-		line := lastLoadLine(ctx, h, server, sn)
+		var line string
+		if watchDlopen {
+			line = lastLoadLine(ctx, h, server, sn)
+		}
 		return line, loaderError("extension did not start", line, baseline)
 	}
 	deadline = time.Now().Add(socketWaitTimeout)
@@ -434,7 +469,10 @@ func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern,
 			return baseline, nil
 		}
 		if len(h.PIDs(ctx, server, sn, pattern)) == 0 {
-			line := lastLoadLine(ctx, h, server, sn)
+			var line string
+			if watchDlopen {
+				line = lastLoadLine(ctx, h, server, sn)
+			}
 			return line, loaderError("extension exited before binding its socket", line, baseline)
 		}
 		select {
@@ -443,7 +481,10 @@ func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern,
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
-	line := lastLoadLine(ctx, h, server, sn)
+	var line string
+	if watchDlopen {
+		line = lastLoadLine(ctx, h, server, sn)
+	}
 	return line, loaderError("server socket did not appear", line, baseline)
 }
 

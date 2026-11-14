@@ -25,13 +25,16 @@ Keep `CGO_ENABLED=0` and one application binary.
 2. **Treat vendor device assets as signed third-party binaries.** Their files
    carry an appended Huawei CBG PKCS#7 block, but the OpenHarmony
    `testfwk_arkxtest` source shows `uitest`'s `ExecuteExtension` only calls
-   `dlopen`/`dlsym`/`OnInit`/`OnRun`; no signature verifier is called. Do
-   **not** assume signing is required or is the blocker:
-   earlier unsigned/truncated tests were confounded by file mode, the
-   `OnInit(void*, int, char**)` ABI, and a daemon that failed before extension
-   load. Do not modify/re-sign vendor assets for distribution. A missing system
-   symbol such as `MapFieldBase11SetMapDirty` is an OS ABI mismatch: use image
-   mode or a compatible server asset. See `native/README.md`.
+   `dlopen`/`dlsym`/`OnInit`/`OnRun`; no signature verifier is called there.
+   The loader itself (ld-musl/XPM) still rejects the unsigned self-built
+   server inside the signed `uitest` domain with `Permission denied` on
+   production devices; do not confuse that with the earlier confounded
+   unsigned tests (file mode, `OnInit(void*, int, char**)`, incomplete daemon).
+   Do not modify or re-sign vendor assets for distribution. A missing system
+   symbol such as `MapFieldBase11SetMapDirty` is an OS ABI mismatch, not a
+   signature issue. The supported escape hatch for locked/rooted devices is
+   the standalone loader (`native/loader/`), then vendor fallback/image mode.
+   See `native/README.md`.
 3. **Do not add CGO or host-side decoders.** H.264/JPEG decode belongs to the
    browser. Keep `CGO_ENABLED=0` in every build target.
 4. **Keep protocol constants exact.** The agent frame magic is `1145141919`,
@@ -63,7 +66,8 @@ internal/assets             embed FS + hdc extraction/cache
 internal/config             JSON config, defaults, server normalization
 internal/hdc                exec.Command wrapper; no shell string splitting
 internal/uitest             agent bootstrap, JSON-RPC, layout, JPEG stream
-internal/scrcpy             server-variant selection, .so push/start, gRPC
+internal/scrcpy             server-variant selection, .so push/start, gRPC,
+                            standalone root loader (standalone.go)
 internal/session            per-device state, video/image lifecycle, input,
                             layout, screenshot, fan-out hub
 internal/webui              HTTP API + WebSocket + embedded UI
@@ -83,13 +87,24 @@ buffer is full).
 
 The Go video path is orchestration, not capture. Exact flow:
 
+0. If `hdc shell "id -u; uname -m"` reports `0` and `aarch64`, try the
+   standalone backend first (`internal/scrcpy/standalone.go`): push
+   `server_static.z.so` and the embedded `hoscpy_loader`, then start detached
+   `/data/local/tmp/hoscpy_loader /data/local/tmp/hoscpy_server.z.so <args>`
+   with stdout/stderr in `/data/local/tmp/hoscpy_loader.log`. It uses the same
+   `scrcpy_grpc_socket`; on failure continue with the variants below. The
+   loader (`native/loader/loader.c`) is an ordinary unsigned process, so it
+   avoids XPM rejection and the vendor protobuf/Rosen ABI mismatch. Do not
+   replace it with LD_PRELOAD: the OHOS loader ignores preloads for `uitest`.
 1. `/system/bin/uitest --version` is read.
 2. `scrcpy.VariantsFor` supports current unix-socket systems:
    - `server_static.z.so` first, then `server_unix_6.5` → `6.4` → `6.3.1`
    - legacy TCP and old/x86 agent assets are not embedded
-   - unsigned static is rejected by XPM on some H7 production devices; use the
-     vendor fallback or image mode there
-3. Kill any existing `hoscpy_server.z.so` process.
+   - unsigned static is rejected by XPM in the uitest domain on some H7
+     production devices; the standalone step above, the vendor fallback, or
+     image mode is used there
+3. Kill any existing `hoscpy_server.z.so` process (this also matches the
+   standalone loader because its argv contains the server path).
 4. Extract the embedded asset to the host cache; compare md5 with
    `/data/local/tmp/hoscpy_server.z.so`; if different, `rm -f` remote then
    `hdc file send`.
@@ -163,6 +178,7 @@ make vet
 make fmt
 make proto                 # protoc + protoc-gen-go + protoc-gen-go-grpc
 make dist                  # linux/amd64, darwin/amd64+arm64, windows/amd64
+OHOS_NDK=... make native-loader  # rebuild the committed loader asset
 ```
 
 Before yielding any non-trivial change:
@@ -171,6 +187,10 @@ Before yielding any non-trivial change:
 - Run `./bin/hoscpygo -no-open -debug` and exercise the changed path.
 - For video changes: connect with `mode:"video"`, wait for `streaming`, open
   `/ws`, confirm SPS/PPS + IDR, fetch `/layout` and `/screenshot`.
+- For root/standalone changes: on a device whose `hdc shell "id -u; uname -m"`
+  is `0`/`aarch64`, `mode:"video"` must log
+  `variant=standalone:server_static.z.so` and reach `streaming`; after
+  disconnect there must be no `hoscpy_loader` process and no scrcpy fport.
 - For image changes: `mode:"image"`, confirm JPEG frames and layout/input.
 - For hdc-resolution changes: put a fake `hdc` in a temp directory on `PATH`
   and verify `/api/health` reports it; with an empty `PATH`/`HDC`, startup must
@@ -218,6 +238,9 @@ costs ~3.5 s and hilog's `-e` regex ~13 s on a device with a large buffer.
 
 - `minimal_ext.c` / `build.sh`: OHOS NDK aarch64 extension probe.
 - `dlprobe.c`: direct `dlopen`/`dlsym` probe for the loader ABI.
+- `loader/`: standalone root launcher (`loader.c`, `README.md`) embedded as
+  `internal/assets/device/hoscpy_loader`; it runs the static server outside
+  the signed `uitest` domain, where XPM does not reject it.
 - `server/`: unsigned static gRPC/protobuf server probe with public
   `OH_AVScreenCapture` + `OH_VideoEncoder`; its stripped build is embedded as
   `internal/assets/device/server_static.z.so` and selected first on unix-socket
@@ -226,13 +249,13 @@ costs ~3.5 s and hilog's `-e` regex ~13 s on a device with a large buffer.
   native Make targets initialize/build them; `make dist` uses the embedded
   `server_static.z.so` and does not require submodules.
 - `README.md`: reverse-engineering findings, appended Huawei CBG signature
-  evidence, and the unsigned/truncated/copied-signature experiments.
+  evidence, the unsigned/truncated/copied-signature experiments, and the
+  standalone loader rationale.
 
 The embedded static server is still a prototype: display geometry is fixed to
-the probed PC, capture is change-driven, and one stream is supported. The direct
-loader proves an unsigned self-built `.so` can be loaded by the same `dlopen`
-path; the full `uitest start-daemon` path was not demonstrated in the remote
-probe environment, so keep the vendor assets as fallbacks.
+the probed PC, capture is change-driven, and one stream is supported. The
+standalone loader is what makes it usable on rooted OH 7.1 devices; keep the
+vendor assets as fallbacks for unrooted devices.
 
 ## Licensing
 
