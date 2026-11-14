@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -277,9 +278,7 @@ func (c *Client) call(ctx context.Context, method, api string, args any, message
 		params["message_type"] = messageType
 		params["this"] = "Driver#0"
 	}
-	for k, v := range extra {
-		params[k] = v
-	}
+	maps.Copy(params, extra)
 	msg := map[string]any{"module": moduleName, "method": method, "params": params}
 	body, err := json.Marshal(msg)
 	if err != nil {

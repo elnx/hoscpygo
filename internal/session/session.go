@@ -99,7 +99,6 @@ func (m *Manager) Devices(ctx context.Context) ([]Device, []string) {
 	servers := m.cfg.Servers()
 	ch := make(chan result, len(servers))
 	for _, server := range servers {
-		server := server
 		go func() {
 			c, cancel := context.WithTimeout(ctx, 6*time.Second)
 			defer cancel()
@@ -650,10 +649,7 @@ func (s *Session) touchGesture(ctx context.Context, msg InputMessage) error {
 		}
 		velocity := 600
 		if elapsed > 0 {
-			velocity = int(float64(dist) / elapsed.Seconds())
-			if velocity < 200 {
-				velocity = 200
-			}
+			velocity = max(int(float64(dist)/elapsed.Seconds()), 200)
 		}
 		return s.uitest.Swipe(ctx, x1, y1, x2, y2, velocity)
 	}
