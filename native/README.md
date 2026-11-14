@@ -231,6 +231,25 @@ Practical findings from the H7 test device:
   root probe, but on the tested H7 it is still rejected when loaded inside the
   `uitest` domain. A certificate-signed ELF with a certificate trusted by the
   device/XPM policy (or a Huawei vendor signature) is required there.
+- Verified signing experiment on `192.0.2.10:43365` (non-root):
+
+  - `runprobe` self-signed and cert-signed with the SDK's
+    `OpenHarmonyApplication.pem` + `OpenHarmony.p12`
+    (`display-sign`: `verify signature success`) still cannot be executed by
+    the `u:r:sh:s0` domain:
+    `/bin/sh: ...: Permission denied` (rc 126). The file keeps label
+    `u:object_r:data_local_tmp:s0`; signing does not change the label. Both
+    signed binaries do execute in the rooted `u:r:su:s0` domain.
+  - `server_static.z.so` cert-signed with the same chain and loaded through
+    `uitest` still logs
+    `Dlopen /data/local/tmp/hoscpy_signed.z.so failed: ... Permission denied`.
+    The device's XPM trusts the Huawei CBG container, not the OpenHarmony
+    `.codesign` chain, so this tool cannot unlock the non-root uitest path.
+  - The vendor `.z.so` assets are not produced by this tool: they have no
+    `.codesign` section, `display-sign` reports
+    `code signature is not found`, and they carry an appended Huawei CBG
+    PKCS#7 trailer (`DevEcoTesting Release` → `Huawei CBG Software Signing
+    Service CA` → `Huawei CBG Root CA G2`).
 - `ohosign` is not the ELF signing tool in this SDK; use `binary-sign-tool`
   (`binary-sign-tool.jar` on Java platforms). It cannot reproduce the Huawei
   vendor signature without Huawei's private key and certificate chain.
