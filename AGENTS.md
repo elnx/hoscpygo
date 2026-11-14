@@ -192,8 +192,11 @@ hdc -t <sn> fport ls
 hdc -t <sn> fport rm tcp:<port> localabstract:<socket>
 ```
 
-Known timing constraints: variants can take ~10 s each; agent/layout first call
-~2 s; do not "fix" slowness by removing socket/process waits.
+Known timing constraints: a loader rejection aborts a variant in ~1-2 s
+(the daemon exits within ~0.5 s and its hilog line is checked in parallel with
+the process poll), a loaded server that never paints is cut off after
+`firstFrameTimeout` (3 s), and the agent/layout first call takes ~2 s; do not
+"fix" slowness by removing socket/process waits.
 
 ## Frontend
 

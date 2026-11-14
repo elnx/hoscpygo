@@ -114,6 +114,13 @@ Two capture paths:
 Every fport is created **after** the device-side abstract socket exists. This
 matters: an hdc forward created too early silently points at nothing.
 
+Video startup is bounded per variant. A rejected `.so` (XPM denial or symbol
+relocation) is detected from the vanished daemon and its hilog line within a
+second or two; a server that loads but never paints gets `firstFrameTimeout`
+(3 s) before the next variant is tried. Auto mode therefore reaches image
+capture in seconds instead of tens of seconds. On exit, device cleanup is
+bounded to 5 s and a second Ctrl-C exits immediately.
+
 ## Protocol summary
 
 Exact proto recovered from the vendor SDK (no package):

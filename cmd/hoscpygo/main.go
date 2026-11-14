@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"hoscpygo/internal/config"
 	"hoscpygo/internal/hdc"
@@ -19,6 +20,11 @@ import (
 )
 
 var version = "dev"
+
+// shutdownTimeout bounds the whole post-signal path. Cleanup talks to the
+// device for fport removal and extension shutdown, and a wedged hdc connection
+// must not keep the process alive after Ctrl-C.
+const shutdownTimeout = 5 * time.Second
 
 func main() {
 	var (
@@ -88,12 +94,22 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sig := make(chan os.Signal, 1)
+	sig := make(chan os.Signal, 2)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
 	go func() {
 		<-sig
 		slog.Info("shutting down")
 		cancel()
+		select {
+		case <-sig:
+			slog.Warn("forced shutdown")
+		case <-done:
+			return
+		case <-time.After(shutdownTimeout):
+			slog.Warn("shutdown timed out; exiting")
+		}
+		os.Exit(130)
 	}()
 
 	url := webui.URL(cfg.Listen)
@@ -107,6 +123,7 @@ func main() {
 		slog.Error("http server", "err", err)
 	}
 	mgr.Close(context.Background())
+	close(done)
 }
 
 func openBrowser(url string) error {

@@ -413,13 +413,11 @@ func (s *Session) startImage() error {
 		slog.Info("image streaming", "sn", s.SN, "scale", s.cfg.ImageScale)
 		return nil
 	case <-started:
-		// The agent acknowledged but has not produced a frame yet (static
-		// screen). Consider it started; the next change will paint.
+		// StartImage closes this on the first frame or after its own 8 s
+		// fallback, so an unchanged screen still reaches streaming. Keeping a
+		// second timer here raced that fallback and could fail the fallback.
 		s.setState(stateStreaming, config.ModeImage, "")
 		return nil
-	case <-time.After(8 * time.Second):
-		s.uitest.StopImage(context.Background())
-		return errors.New("no image frame within 8s")
 	case <-s.ctx.Done():
 		return s.ctx.Err()
 	}

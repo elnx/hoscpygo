@@ -37,6 +37,18 @@ const (
 	// filename.
 	ExtensionName = "hoscpy_server.z.so"
 	devicePort    = 5000
+
+	// Per-variant startup deadlines. A loader rejection (XPM, relocation)
+	// kills the uitest daemon within ~0.5 s; waitForServerReady notices the
+	// vanished process and reports it instead of burning the socket timeout.
+	processStartTimeout = 6 * time.Second
+	socketWaitTimeout   = 8 * time.Second
+
+	// firstFrameTimeout bounds the wait for the first H.264 payload after a
+	// successful gRPC handshake. Kept short because a loaded server that never
+	// paints would otherwise stall auto mode before the image fallback; image
+	// capture seeds a screenshot and follows screen changes.
+	firstFrameTimeout = 3 * time.Second
 )
 
 var versionRe = regexp.MustCompile(`\d{1,3}(?:\.\d{1,3}){1,3}`)
@@ -128,8 +140,12 @@ func Start(ctx context.Context, opts Options) (*Stream, error) {
 	uitestVer := detectUitestVersion(ctx, opts.HDC, opts.Server, opts.SN)
 	slog.Info("selecting video server", "sn", opts.SN, "uitest", uitestVer)
 	var errs []string
+	lastLoad := lastLoadLine(ctx, opts.HDC, opts.Server, opts.SN)
 	for _, v := range VariantsFor(uitestVer) {
-		s, err := startVariant(ctx, opts, v)
+		s, load, err := startVariant(ctx, opts, v, lastLoad)
+		if load != "" {
+			lastLoad = load
+		}
 		if err == nil {
 			return s, nil
 		}
@@ -168,23 +184,18 @@ func detectUitestVersion(ctx context.Context, h *hdc.Client, server, sn string) 
 	return m[len(m)-1]
 }
 
-func startVariant(ctx context.Context, opts Options, v Variant) (*Stream, error) {
+func startVariant(ctx context.Context, opts Options, v Variant, lastLoad string) (*Stream, string, error) {
 	// Stop any previous extension before replacing the .so: a running process
 	// keeps the file mapped, and hdc file send then fails with ETXTBSY.
 	killServer(ctx, opts)
 	if err := pushServer(ctx, opts, v); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	_, _ = opts.HDC.Shell(ctx, opts.Server, opts.SN, "power-shell wakeup", 5*time.Second)
 	cmd := fmt.Sprintf("/system/bin/uitest start-daemon singleness --extension-name %s -scale %d -frameRate %d -bitRate %d -p %d -iFrameInterval %d &",
 		ExtensionName, opts.Scale, opts.FrameRate, opts.BitRateMbps<<20, devicePort, opts.IFrameInterval)
 	if err := opts.HDC.StartBackground(ctx, opts.Server, opts.SN, cmd); err != nil {
-		return nil, fmt.Errorf("start extension: %w", err)
-	}
-	if !waitForProcess(ctx, opts.HDC, opts.Server, opts.SN, ExtensionName, 6*time.Second) {
-		hilog := recentLoadError(ctx, opts.HDC, opts.Server, opts.SN, ExtensionName)
-		killServer(ctx, opts)
-		return nil, fmt.Errorf("extension did not start%s", hilog)
+		return nil, "", fmt.Errorf("start extension: %w", err)
 	}
 	// The server binds its socket a little after the process appears. An hdc
 	// fport created before the target exists can end up permanently pointing at
@@ -193,15 +204,15 @@ func startVariant(ctx context.Context, opts Options, v Variant) (*Stream, error)
 	if !v.Unix {
 		socketName = "tcp:5000"
 	}
-	if !waitForServerSocket(ctx, opts.HDC, opts.Server, opts.SN, socketName, v.Unix, 8*time.Second) {
-		hilog := recentLoadError(ctx, opts.HDC, opts.Server, opts.SN, ExtensionName)
+	load, err := waitForServerReady(ctx, opts.HDC, opts.Server, opts.SN, ExtensionName, socketName, v.Unix, lastLoad)
+	if err != nil {
 		killServer(ctx, opts)
-		return nil, fmt.Errorf("server socket did not appear%s", hilog)
+		return nil, load, err
 	}
 	port, err := allocPort(opts.Server)
 	if err != nil {
 		killServer(ctx, opts)
-		return nil, err
+		return nil, load, err
 	}
 	target := "tcp:5000"
 	if v.Unix {
@@ -209,7 +220,7 @@ func startVariant(ctx context.Context, opts Options, v Variant) (*Stream, error)
 	}
 	if err := opts.HDC.Fport(ctx, opts.Server, opts.SN, fmt.Sprintf("tcp:%d", port), target); err != nil {
 		killServer(ctx, opts)
-		return nil, fmt.Errorf("fport: %w", err)
+		return nil, load, fmt.Errorf("fport: %w", err)
 	}
 	cleanupPort := func() {
 		_ = opts.HDC.RemoveFport(context.Background(), opts.Server, opts.SN, fmt.Sprintf("tcp:%d", port), target)
@@ -223,7 +234,7 @@ func startVariant(ctx context.Context, opts Options, v Variant) (*Stream, error)
 	if err != nil {
 		killServer(ctx, opts)
 		cleanupPort()
-		return nil, err
+		return nil, load, err
 	}
 	// Ask for an immediate keyframe; static screens otherwise stay blank.
 	go func() {
@@ -241,7 +252,7 @@ func startVariant(ctx context.Context, opts Options, v Variant) (*Stream, error)
 		killServer(context.Background(), opts)
 		cleanupPort()
 	}
-	return stream, nil
+	return stream, load, nil
 }
 
 func pushServer(ctx context.Context, opts Options, v Variant) error {
@@ -344,10 +355,10 @@ func openStream(ctx context.Context, addr string, v Variant, port int) (*Stream,
 	}()
 	select {
 	case <-first:
-	case <-time.After(10 * time.Second):
+	case <-time.After(firstFrameTimeout):
 		_ = conn.Close()
 		streamCancel()
-		return nil, nil, nil, errors.New("no video frame within 10s")
+		return nil, nil, nil, fmt.Errorf("no video frame within %s", firstFrameTimeout)
 	case <-ctx.Done():
 		_ = conn.Close()
 		streamCancel()
@@ -382,27 +393,76 @@ func allocPort(server string) (int, error) {
 	return 0, errors.New("no free remote port")
 }
 
-func waitForProcess(ctx context.Context, h *hdc.Client, server, sn, pattern string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if len(h.PIDs(ctx, server, sn, pattern)) > 0 {
-			return true
+// waitForServerReady waits for the extension daemon and its socket. When the
+// loader rejects the .so, the daemon logs the reason and exits within ~0.5 s.
+// Polling ps alone cannot be trusted to observe that short-lived process, so
+// the newest Dlopen line is also checked; a line newer than baseline aborts the
+// wait at once. baseline is the newest line observed before this variant was
+// launched, which keeps a previous variant's failure from being mistaken for
+// this one.
+//
+// The returned string is the newest loader line when it differs from baseline;
+// callers thread it back as the next variant's baseline.
+func waitForServerReady(ctx context.Context, h *hdc.Client, server, sn, pattern, socketName string, unix bool, baseline string) (string, error) {
+	deadline := time.Now().Add(processStartTimeout)
+	var pid int
+	var lastCheck time.Time
+	for pid == 0 && time.Now().Before(deadline) {
+		if pids := h.PIDs(ctx, server, sn, pattern); len(pids) > 0 {
+			pid = pids[0]
+			break
+		}
+		if time.Since(lastCheck) >= 500*time.Millisecond {
+			lastCheck = time.Now()
+			if line := lastLoadLine(ctx, h, server, sn); line != "" && line != baseline {
+				return line, loaderError("extension failed to load", line, baseline)
+			}
 		}
 		select {
 		case <-ctx.Done():
-			return false
+			return baseline, ctx.Err()
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
-	return false
+	if pid == 0 {
+		line := lastLoadLine(ctx, h, server, sn)
+		return line, loaderError("extension did not start", line, baseline)
+	}
+	deadline = time.Now().Add(socketWaitTimeout)
+	for time.Now().Before(deadline) {
+		if serverSocketPresent(ctx, h, server, sn, socketName, unix) {
+			return baseline, nil
+		}
+		if len(h.PIDs(ctx, server, sn, pattern)) == 0 {
+			line := lastLoadLine(ctx, h, server, sn)
+			return line, loaderError("extension exited before binding its socket", line, baseline)
+		}
+		select {
+		case <-ctx.Done():
+			return baseline, ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	line := lastLoadLine(ctx, h, server, sn)
+	return line, loaderError("server socket did not appear", line, baseline)
 }
 
-func recentLoadError(ctx context.Context, h *hdc.Client, server, sn, pattern string) string {
+// lastLoadLine returns the newest device-side Dlopen failure line, or "".
+func lastLoadLine(ctx context.Context, h *hdc.Client, server, sn string) string {
 	out, err := h.Shell(ctx, server, sn, "hilog -x 2>/dev/null | grep -a 'Dlopen /data/local/tmp' | tail -1", 6*time.Second)
-	if err != nil || strings.TrimSpace(out) == "" {
+	if err != nil {
 		return ""
 	}
-	return ": " + strings.TrimSpace(out)
+	return strings.TrimSpace(out)
+}
+
+// loaderError appends the loader line unless it is empty or predates this
+// attempt.
+func loaderError(msg, line, baseline string) error {
+	if line == "" || line == baseline {
+		return errors.New(msg)
+	}
+	return fmt.Errorf("%s: %s", msg, line)
 }
 
 func killServer(ctx context.Context, opts Options) {
@@ -410,28 +470,17 @@ func killServer(ctx context.Context, opts Options) {
 	opts.HDC.KillPIDs(ctx, opts.Server, opts.SN, pids)
 }
 
-func waitForServerSocket(ctx context.Context, h *hdc.Client, server, sn, name string, unix bool, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
+func serverSocketPresent(ctx context.Context, h *hdc.Client, server, sn, name string, unix bool) bool {
 	cmd := "cat /proc/net/unix 2>/dev/null"
 	if !unix {
 		cmd = "netstat -ltn 2>/dev/null"
 	}
-	for time.Now().Before(deadline) {
-		out, err := h.Shell(ctx, server, sn, cmd, 5*time.Second)
-		if err == nil {
-			if unix {
-				if strings.Contains(out, "@"+name) || strings.Contains(out, name) {
-					return true
-				}
-			} else if strings.Contains(out, ":"+strings.TrimPrefix(name, "tcp:")) {
-				return true
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return false
-		case <-time.After(250 * time.Millisecond):
-		}
+	out, err := h.Shell(ctx, server, sn, cmd, 5*time.Second)
+	if err != nil {
+		return false
 	}
-	return false
+	if unix {
+		return strings.Contains(out, "@"+name) || strings.Contains(out, name)
+	}
+	return strings.Contains(out, ":"+strings.TrimPrefix(name, "tcp:"))
 }

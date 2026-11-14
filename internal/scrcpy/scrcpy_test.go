@@ -1,9 +1,39 @@
 package scrcpy
 
 import (
+	"context"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"hoscpygo/internal/hdc"
 )
+
+const fakeHDCEnv = "HOSCPY_FAKE_HDC"
+
+// TestMain doubles as a fake hdc binary: the readiness wait tests run the test
+// executable instead of hdc, so the loader-race logic is exercised without a
+// device.
+func TestMain(m *testing.M) {
+	if os.Getenv(fakeHDCEnv) == "1" {
+		args := strings.Join(os.Args[1:], " ")
+		switch {
+		case strings.Contains(args, "ps -ef"):
+			// The daemon died before the first poll; only hilog saw it.
+		case strings.Contains(args, "hilog"):
+			fmt.Print("11-14 11:29:56.832 25948 25948 E C03100/uitest/UiTestKit_Addon: [extension_executor.cpp:(ExecuteExtension)] Dlopen /data/local/tmp/hoscpy_server.z.so failed: Error relocating /data/local/tmp/hoscpy_server.z.so: symbol not found\n")
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func fakeHDC(t *testing.T) *hdc.Client {
+	t.Helper()
+	return hdc.New(os.Args[0], append(os.Environ(), fakeHDCEnv+"=1"))
+}
 
 func TestVariantsNewSystem(t *testing.T) {
 	vs := VariantsFor("6.0.2.3")
@@ -34,5 +64,36 @@ func TestVideoFailureHint(t *testing.T) {
 	}
 	if got := videoFailureHint([]string{"some other error"}); got != "" {
 		t.Fatalf("unexpected non-empty hint: %q", got)
+	}
+}
+
+// A loader rejection can outlive the ps poll window. The hilog line must end
+// the wait well before processStartTimeout, and must be reported as this
+// attempt's failure rather than left as a bare timeout.
+func TestWaitForServerReadyDetectsMissedDaemon(t *testing.T) {
+	start := time.Now()
+	load, err := waitForServerReady(context.Background(), fakeHDC(t), "", "SN",
+		ExtensionName, "scrcpy_grpc_socket", true, "older loader line")
+	if err == nil {
+		t.Fatal("expected failure")
+	}
+	if !strings.Contains(err.Error(), "extension failed to load") || !strings.Contains(err.Error(), "symbol not found") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(load, "symbol not found") {
+		t.Fatalf("unexpected load line: %q", load)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("loader failure took %s, want < 3s", d)
+	}
+}
+
+func TestLoaderErrorIgnoresBaseline(t *testing.T) {
+	if err := loaderError("extension did not start", "same line", "same line"); err.Error() != "extension did not start" {
+		t.Fatalf("baseline line leaked into error: %v", err)
+	}
+	err := loaderError("extension did not start", "new line", "old line")
+	if !strings.Contains(err.Error(), "new line") || strings.Contains(err.Error(), "old line") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
