@@ -1,4 +1,4 @@
-// Command hoscpygo is a self-contained HarmonyOS mirroring and control server.
+// Command hoscpy is a self-contained HarmonyOS mirroring and control server.
 package main
 
 import (
@@ -118,7 +118,7 @@ func main() {
 			slog.Warn("open browser", "url", url, "err", err)
 		}
 	}
-	slog.Info("hoscpygo", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "listen", cfg.Listen, "url", url)
+	slog.Info("hoscpy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "listen", cfg.Listen, "url", url)
 	if err := ui.ListenAndServe(ctx); err != nil {
 		slog.Error("http server", "err", err)
 	}

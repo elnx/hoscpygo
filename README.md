@@ -35,11 +35,11 @@ available, with an **MSE/jmuxer** fallback. The Go process never decodes video.
 
 ```bash
 make build
-./bin/hoscpygo
+./bin/hoscpy
 # open http://127.0.0.1:8899/
 
 # Use only the hdc server running on another machine:
-./bin/hoscpygo -s 192.0.2.10:8710
+./bin/hoscpy -s 192.0.2.10:8710
 ```
 
 `-s` is a per-process override and is not written into the config file. It uses
@@ -77,10 +77,10 @@ URL shortcuts:
 
 ```bash
 make dist
-# dist/hoscpygo-linux-amd64
-# dist/hoscpygo-darwin-amd64
-# dist/hoscpygo-darwin-arm64
-# dist/hoscpygo-windows-amd64.exe
+# dist/hoscpy-linux-amd64
+# dist/hoscpy-darwin-amd64
+# dist/hoscpy-darwin-arm64
+# dist/hoscpy-windows-amd64.exe
 ```
 
 `CGO_ENABLED=0` is used for every target. Each artifact is a single file with
@@ -361,7 +361,7 @@ documented in [`native/server/README.md`](native/server/README.md).
 Layout:
 
 ```
-cmd/hoscpygo        entrypoint
+cmd/hoscpy          entrypoint
 internal/assets     embed web/device assets (hdc is external)
 internal/hdc        hdc CLI wrapper
 internal/uitest     agent lifecycle, JSON-RPC, layout, JPEG stream

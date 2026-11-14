@@ -61,7 +61,7 @@ Keep `CGO_ENABLED=0` and one application binary.
 ## Architecture / file map
 
 ```
-cmd/hoscpygo/main.go        flags, signal handling, browser open, server start
+cmd/hoscpy/main.go           flags, signal handling, browser open, server start
 internal/assets             embed FS + hdc extraction/cache
 internal/config             JSON config, defaults, server normalization
 internal/hdc                exec.Command wrapper; no shell string splitting
@@ -172,7 +172,7 @@ probe in `native/server/`) plus a variant entry, not a Go rewrite.
 ## Build / test
 
 ```bash
-make build                 # bin/hoscpygo, CGO_ENABLED=0
+make build                 # bin/hoscpy, CGO_ENABLED=0
 make test                  # Go unit tests
 make vet
 make fmt
@@ -184,7 +184,7 @@ OHOS_NDK=... make native-loader  # rebuild the committed loader asset
 Before yielding any non-trivial change:
 
 - `go test ./...`, `go vet ./...`, `gofmt -l .` empty.
-- Run `./bin/hoscpygo -no-open -debug` and exercise the changed path.
+- Run `./bin/hoscpy -no-open -debug` and exercise the changed path.
 - For video changes: connect with `mode:"video"`, wait for `streaming`, open
   `/ws`, confirm SPS/PPS + IDR, fetch `/layout` and `/screenshot`.
 - For root/standalone changes: on a device whose `hdc shell "id -u; uname -m"`
@@ -195,7 +195,7 @@ Before yielding any non-trivial change:
 - For hdc-resolution changes: put a fake `hdc` in a temp directory on `PATH`
   and verify `/api/health` reports it; with an empty `PATH`/`HDC`, startup must
   fail and print the installation hint.
-- `strings -a bin/hoscpygo | grep -E 'hdc/(linux|darwin|windows)_'` must be empty;
+- `strings -a bin/hoscpy | grep -E 'hdc/(linux|darwin|windows)_'` must be empty;
   no hdc binaries are embedded.
 - Cross-compile after changing imports/OS-specific code.
 

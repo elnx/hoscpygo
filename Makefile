@@ -1,6 +1,6 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
-BIN := hoscpygo
+BIN := hoscpy
 
 .PHONY: all build run test vet fmt proto dist clean linux darwin windows \
 	native-src native-deps native-server native-asset native-loader dist-native
@@ -8,10 +8,10 @@ BIN := hoscpygo
 all: build
 
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BIN) ./cmd/hoscpygo
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BIN) ./cmd/hoscpy
 
 run:
-	CGO_ENABLED=0 go run ./cmd/hoscpygo -no-open
+	CGO_ENABLED=0 go run ./cmd/hoscpy -no-open
 
 test:
 	go test ./...
@@ -77,16 +77,16 @@ dist-native: native-deps
 
 linux:
 	mkdir -p dist
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-linux-amd64 ./cmd/hoscpygo
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-linux-amd64 ./cmd/hoscpy
 
 darwin:
 	mkdir -p dist
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-darwin-amd64 ./cmd/hoscpygo
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-darwin-arm64 ./cmd/hoscpygo
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-darwin-amd64 ./cmd/hoscpy
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-darwin-arm64 ./cmd/hoscpy
 
 windows:
 	mkdir -p dist
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-windows-amd64.exe ./cmd/hoscpygo
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BIN)-windows-amd64.exe ./cmd/hoscpy
 
 clean:
 	rm -rf bin dist native/server/build
