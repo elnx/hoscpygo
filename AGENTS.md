@@ -252,10 +252,11 @@ costs ~3.5 s and hilog's `-e` regex ~13 s on a device with a large buffer.
   evidence, the unsigned/truncated/copied-signature experiments, and the
   standalone loader rationale.
 
-The embedded static server is still a prototype: display geometry is fixed to
-the probed PC, capture is change-driven, and one stream is supported. The
-standalone loader is what makes it usable on rooted OH 7.1 devices; keep the
-vendor assets as fallbacks for unrooted devices.
+The embedded static server is still a prototype: the host passes the probed
+display geometry to it (portrait phones included), mid-stream rotation needs a
+restart, capture is change-driven, and one stream is supported. The standalone
+loader is what makes it usable on rooted OH 7.1 devices; keep the vendor assets
+as fallbacks for unrooted devices.
 
 ## Licensing
 

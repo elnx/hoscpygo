@@ -307,11 +307,13 @@ embedded as `server_static.z.so` and is tried first for unix-socket systems. It
 uses the public `OH_AVScreenCapture` + `OH_VideoEncoder` APIs and statically
 links protobuf 33.5, gRPC 1.73, and libc++, so it does not need the PC's
 `libprotobuf.z.so`/`libgrpc*.z.so` ABI. It serves the existing `ScrcpyService`
-protocol and produces decodable 2880×1920 H.264 on the tested PC. If it fails to
-start on another device, the vendor assets remain as fallbacks. See
-[`native/server/README.md`](native/server/README.md). This is still a probe:
-display geometry is fixed, the capture path is change-driven, and one stream is
-supported.
+protocol and produces decodable H.264. The host probes the device display and
+passes the scaled `-width/-height` to the standalone server, so portrait phones
+are captured at their real orientation instead of the server's 2880×1920 PC
+default. If it fails to start on another device, the vendor assets remain as
+fallbacks. See [`native/server/README.md`](native/server/README.md). This is
+still a probe: mid-stream rotation is not handled, the capture path is
+change-driven, and one stream is supported.
 
 ## Security
 

@@ -118,3 +118,47 @@ func TestStandaloneTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestStandaloneArgsGeometry(t *testing.T) {
+	base := Options{Scale: 2, FrameRate: 60, BitRateMbps: 8, IFrameInterval: 2000}
+	cases := []struct {
+		name       string
+		width      int
+		height     int
+		wantWidth  int
+		wantHeight int
+		wantArg    string
+	}{
+		{"phone portrait", 1260, 2720, 630, 1360, "-width 630 -height 1360"},
+		{"pc landscape", 2880, 1920, 1440, 960, "-width 1440 -height 960"},
+		{"odd dimensions", 1261, 2721, 630, 1360, "-width 630 -height 1360"},
+		{"unknown geomeometry", 0, 0, 0, 0, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			opts := base
+			opts.Width, opts.Height = c.width, c.height
+			args, w, h := standaloneArgs(opts)
+			if w != c.wantWidth || h != c.wantHeight {
+				t.Fatalf("geometry = %dx%d, want %dx%d", w, h, c.wantWidth, c.wantHeight)
+			}
+			if c.wantArg == "" {
+				if strings.Contains(args, "-width") {
+					t.Fatalf("unexpected geometry args: %s", args)
+				}
+				return
+			}
+			if !strings.Contains(args, c.wantArg) {
+				t.Fatalf("args %q missing %q", args, c.wantArg)
+			}
+		})
+	}
+}
+
+func TestEvenDimension(t *testing.T) {
+	for in, want := range map[int]int{1260: 1260, 1261: 1260, 1: 1, 0: 0, 2: 2} {
+		if got := even(in); got != want {
+			t.Fatalf("even(%d) = %d, want %d", in, got, want)
+		}
+	}
+}

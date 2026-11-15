@@ -376,8 +376,11 @@ this.
 
 ## Limitations
 
-- Display size is hard-coded to the probed PC (`2880x1920`, divided by
-  `-scale`); multi-display, rotation, and arbitrary resolutions are not handled.
+- Capture size defaults to `2880x1920` divided by `-scale`, but the hoscpy host
+  now probes the real display (`snapshot_display`) and passes explicit
+  `-width`/`-height`, so portrait phones capture at their physical orientation.
+  Multi-display and mid-stream rotation are not handled; the host restarts the
+  stream for the toolbar rotate action only.
 - The public surface-capture path emits frames when the screen changes; a
   completely static screen can produce long gaps. Trigger input or use an
   encoder-side periodic frame if a constant frame rate is required.

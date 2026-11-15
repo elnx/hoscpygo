@@ -3,6 +3,7 @@ package scrcpy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -57,8 +58,12 @@ func startStandalone(ctx context.Context, opts Options) (*Stream, error) {
 		return nil, err
 	}
 	_, _ = opts.HDC.Shell(ctx, opts.Server, opts.SN, "power-shell wakeup", 5*time.Second)
-	args := fmt.Sprintf("-scale %d -frameRate %d -bitRate %d -p %d -iFrameInterval %d",
-		opts.Scale, opts.FrameRate, opts.BitRateMbps<<20, devicePort, opts.IFrameInterval)
+	args, capW, capH := standaloneArgs(opts)
+	if capW > 0 {
+		slog.Info("standalone capture geometry", "sn", opts.SN,
+			"display", fmt.Sprintf("%dx%d", opts.Width, opts.Height),
+			"capture", fmt.Sprintf("%dx%d", capW, capH))
+	}
 	cmd := fmt.Sprintf("%s /data/local/tmp/%s %s", loaderPath, ExtensionName, args)
 	// Keep the loader output: dlopen/entry failures happen before the server
 	// logs anything to hilog or its own file.
@@ -81,10 +86,35 @@ func startStandalone(ctx context.Context, opts Options) (*Stream, error) {
 	return connectStream(ctx, opts, Meta{Variant: "standalone:" + staticAsset, Unix: true})
 }
 
+// standaloneArgs builds the loader command. When the host knows the physical
+// display size, it overrides the server's 2880x1920 default with the scaled,
+// even-sized capture geometry. The server's -scale only affects the default.
+func standaloneArgs(opts Options) (args string, capW, capH int) {
+	args = fmt.Sprintf("-scale %d -frameRate %d -bitRate %d -p %d -iFrameInterval %d",
+		opts.Scale, opts.FrameRate, opts.BitRateMbps<<20, devicePort, opts.IFrameInterval)
+	if opts.Width <= 0 || opts.Height <= 0 {
+		return args, 0, 0
+	}
+	capW, capH = even(opts.Width/opts.Scale), even(opts.Height/opts.Scale)
+	if capW < 2 || capH < 2 {
+		return args, 0, 0
+	}
+	args += fmt.Sprintf(" -width %d -height %d", capW, capH)
+	return args, capW, capH
+}
+
 // killLoader targets only the standalone loader by its on-device name.
 func killLoader(ctx context.Context, opts Options) {
 	pids := opts.HDC.PIDs(ctx, opts.Server, opts.SN, loaderName)
 	opts.HDC.KillPIDs(ctx, opts.Server, opts.SN, pids)
+}
+
+// even rounds a capture dimension down to an even value for H.264.
+func even(n int) int {
+	if n < 2 {
+		return n
+	}
+	return n &^ 1
 }
 
 // recentLoaderLog returns the last lines of the loader output as a

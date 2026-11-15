@@ -255,6 +255,8 @@ type Session struct {
 	touchStartY int
 	touchLastX  int
 	touchLastY  int
+
+	restartMu sync.Mutex
 }
 
 func (s *Session) State() State {
@@ -340,10 +342,17 @@ func (s *Session) Start(_ context.Context) error {
 }
 
 func (s *Session) startVideo() error {
+	// The standalone capture server creates a virtual display sized by the
+	// caller. Its built-in default is 2880x1920 (landscape PC), which is wrong
+	// for portrait phones: the phone content gets letterboxed into a landscape
+	// frame and browser input coordinates no longer match the screen. Probe the
+	// real display first and pass the scaled geometry down.
+	width, height := s.probeDisplaySize(s.ctx)
 	stream, err := scrcpy.Start(s.ctx, scrcpy.Options{
 		HDC: s.hdc, Server: s.Server, SN: s.SN,
 		Scale: s.cfg.Scale, FrameRate: s.cfg.FrameRate,
 		BitRateMbps: s.cfg.BitRateMbps, IFrameInterval: s.cfg.IFrameInterval,
+		Width: width, Height: height,
 		Debug: s.cfg.Debug,
 	})
 	if err != nil {
@@ -361,6 +370,24 @@ func (s *Session) startVideo() error {
 	slog.Info("video streaming", "sn", s.SN, "variant", stream.Meta.Variant, "port", stream.Meta.Port)
 	go s.consumeVideo(stream)
 	return nil
+}
+
+// restartVideo stops the current stream and starts a new server with the
+// current display geometry. The standalone capture surface is fixed at server
+// start, so an explicit rotation needs a restart to avoid a stale frame size.
+func (s *Session) restartVideo() {
+	s.restartMu.Lock()
+	defer s.restartMu.Unlock()
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return
+	}
+	s.stopCapture(s.ctx)
+	if err := s.startVideo(); err != nil {
+		s.setError(err)
+	}
 }
 
 func (s *Session) consumeVideo(stream *scrcpy.Stream) {
@@ -510,6 +537,31 @@ func (s *Session) Screenshot(ctx context.Context) ([]byte, error) {
 
 var shotSizeRe = regexp.MustCompile(`width:?\s*(\d+),\s*height:?\s*(\d+)`)
 
+// probeDisplaySize returns the current physical display size for the video
+// capture server. Video mode may not have a uitest agent yet, so this uses a
+// screenshot; snapshot_display reads display 0 even while a capture server is
+// running. A zero result means the probe failed and the caller should keep its
+// built-in default.
+func (s *Session) probeDisplaySize(ctx context.Context) (int, int) {
+	if _, err := s.Screenshot(ctx); err == nil {
+		s.mu.Lock()
+		w, h := s.width, s.height
+		s.mu.Unlock()
+		if w > 0 && h > 0 {
+			return w, h
+		}
+	} else {
+		slog.Debug("display size probe failed", "sn", s.SN, "err", err)
+	}
+	// Some builds lack snapshot_display or return an unparsable size. The
+	// uitest driver is the second source; it starts the kept agent if needed.
+	if w, h, err := s.uitest.DisplaySize(ctx); err == nil && w > 0 && h > 0 {
+		s.setSize(w, h)
+		return w, h
+	}
+	return 0, 0
+}
+
 // Size returns the current device display size.
 func (s *Session) Size(ctx context.Context) (int, int) {
 	s.mu.Lock()
@@ -599,10 +651,16 @@ func (s *Session) HandleInput(ctx context.Context, msg InputMessage) error {
 			return err
 		}
 		s.mu.Lock()
-		w, h := s.width, s.height
-		s.width, s.height = h, w
+		s.width, s.height = s.height, s.width
+		video := s.mode == config.ModeVideo
 		s.mu.Unlock()
-		_ = w
+		s.hub.BroadcastJSON(s.State())
+		if video {
+			// The standalone capture surface is sized when the server starts;
+			// without a restart the stream keeps the old orientation and
+			// browser input mapping drifts.
+			go s.restartVideo()
+		}
 		return nil
 	}
 	return fmt.Errorf("unsupported input type %q", msg.Type)

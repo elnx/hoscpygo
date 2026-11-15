@@ -86,7 +86,12 @@ type Options struct {
 	FrameRate      int
 	BitRateMbps    int
 	IFrameInterval int
-	Debug          bool
+	// Width and Height are the full physical display size in pixels, used to
+	// size the standalone capture surface. Zero keeps the server default
+	// (2880x1920). Vendor variants query the display themselves.
+	Width  int
+	Height int
+	Debug  bool
 }
 
 // Meta describes the negotiated stream.
