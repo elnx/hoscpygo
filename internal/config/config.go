@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,8 +19,9 @@ const (
 
 // Config is persisted as JSON in the user's config directory.
 type Config struct {
-	Listen  string `json:"listen"`
-	HdcPath string `json:"hdc_path"`
+	HTTPListen  string `json:"http_listen"`
+	HTTPSListen string `json:"https_listen"`
+	HdcPath     string `json:"hdc_path"`
 	// Server, when set, makes this process use only that hdc server for
 	// discovery and device commands. It is a runtime -s override, not persisted.
 	Server          string   `json:"-"`
@@ -37,7 +39,7 @@ type Config struct {
 
 func Default() *Config {
 	return &Config{
-		Listen:          "127.0.0.1:8899",
+		HTTPListen:      "127.0.0.1:8899",
 		Mode:            ModeAuto,
 		Scale:           2,
 		FrameRate:       60,
@@ -85,8 +87,30 @@ func Load(path string) (*Config, error) {
 	if err := json.Unmarshal(b, c); err != nil {
 		return nil, err
 	}
+	// Migrate the pre-split config schema: {"listen": "..."} was the single
+	// HTTP address. A newer file always wins over the legacy key.
+	if !hasJSONKey(b, "http_listen") {
+		var legacy struct {
+			Listen string `json:"listen"`
+		}
+		if err := json.Unmarshal(b, &legacy); err != nil {
+			return nil, err
+		}
+		if legacy.Listen != "" {
+			c.HTTPListen = legacy.Listen
+		}
+	}
 	c.Normalize()
 	return c, nil
+}
+
+func hasJSONKey(b []byte, key string) bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return false
+	}
+	_, ok := raw[key]
+	return ok
 }
 
 func (c *Config) Save(path string) error {
@@ -105,9 +129,8 @@ func (c *Config) Save(path string) error {
 }
 
 func (c *Config) Normalize() {
-	if c.Listen == "" {
-		c.Listen = "127.0.0.1:8899"
-	}
+	c.HTTPListen = strings.TrimSpace(c.HTTPListen)
+	c.HTTPSListen = strings.TrimSpace(c.HTTPSListen)
 	switch c.Mode {
 	case ModeVideo, ModeImage, ModeAuto:
 	default:
@@ -132,6 +155,23 @@ func (c *Config) Normalize() {
 	for i, s := range c.RemoteServers {
 		c.RemoteServers[i] = NormalizeServer(s)
 	}
+}
+
+// Validate checks the browser listener addresses. At least one must be set;
+// an empty address disables that listener.
+func (c *Config) Validate() error {
+	if c.HTTPListen == "" && c.HTTPSListen == "" {
+		return errors.New("http_listen and https_listen are both empty")
+	}
+	for name, addr := range map[string]string{"http_listen": c.HTTPListen, "https_listen": c.HTTPSListen} {
+		if addr == "" {
+			continue
+		}
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			return fmt.Errorf("%s %q: %w", name, addr, err)
+		}
+	}
+	return nil
 }
 
 // Servers returns the effective hdc servers. A -s override wins and suppresses

@@ -362,6 +362,15 @@ function avccSample(nals) {
   return out;
 }
 
+function webcodecsMissingReason() {
+  if (!window.isSecureContext) {
+    const local = "http://127.0.0.1:" + (location.port || "8899");
+    return "当前页面不是安全上下文（" + location.origin +
+      "），WebCodecs 仅在 https、localhost 或 127.0.0.1 下可用；请改用 " + local + " 或 HTTPS 访问";
+  }
+  return "当前浏览器不提供 VideoDecoder，请使用新版 Chrome/Edge";
+}
+
 class VideoPipeline {
   constructor() {
     this.decoder = null;
@@ -419,7 +428,7 @@ class VideoPipeline {
   }
 
   configure(key) {
-    if (!("VideoDecoder" in window)) { this.fallback("WebCodecs 不可用"); return; }
+    if (!("VideoDecoder" in window)) { this.fallback(webcodecsMissingReason()); return; }
     let info;
     try { info = parseSPS(this.sps); } catch (e) { this.fallback("SPS 解析失败: " + e.message); return; }
     if (!info.width || !info.height) { this.fallback("SPS 分辨率无效"); return; }
@@ -491,8 +500,13 @@ class VideoPipeline {
   fallback(reason) {
     if (this.failed) return;
     this.failed = true;
-    console.warn("WebCodecs fallback:", reason);
-    toast("WebCodecs 不可用，切换 MSE: " + reason, "err");
+    console.warn("WebCodecs fallback:", reason, {
+      origin: location.origin,
+      secureContext: window.isSecureContext,
+      videoDecoder: typeof window.VideoDecoder,
+      ua: navigator.userAgent,
+    });
+    toast("WebCodecs 不可用，已回退 MSE：" + reason, "err");
     if (this.decoder) { try { this.decoder.close(); } catch (e) { /* ignore */ } this.decoder = null; }
     this.usingMSE = true;
     $("screen").style.display = "none";
@@ -944,7 +958,8 @@ async function loadConfig() {
     $("cfgImageScale").value = c.image_scale;
     $("cfgRemotes").value = (c.remote_servers || []).join("\n");
     $("cfgHdc").value = c.hdc_path || "";
-    $("cfgListen").value = c.listen;
+    $("cfgHTTPListen").value = c.http_listen || "";
+    $("cfgHTTPSListen").value = c.https_listen || "";
     $("cfgOpen").value = String(c.auto_open_browser);
     $("cfgKeep").value = String(c.keep_agent);
     $("connectMode").value = c.mode;
@@ -963,7 +978,8 @@ async function saveConfig() {
     image_scale: +$("cfgImageScale").value,
     remote_servers: $("cfgRemotes").value.split(/\s+/).filter(Boolean),
     hdc_path: $("cfgHdc").value.trim(),
-    listen: $("cfgListen").value.trim(),
+    http_listen: $("cfgHTTPListen").value.trim(),
+    https_listen: $("cfgHTTPSListen").value.trim(),
     auto_open_browser: $("cfgOpen").value === "true",
     keep_agent: $("cfgKeep").value === "true",
   };

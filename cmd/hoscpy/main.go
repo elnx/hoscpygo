@@ -28,13 +28,14 @@ const shutdownTimeout = 5 * time.Second
 
 func main() {
 	var (
-		listen  = flag.String("listen", "", "HTTP listen address (default from config: 127.0.0.1:8899)")
-		cfgPath = flag.String("config", "", "config file path")
-		hdcPath = flag.String("hdc", "", "path to the hdc executable")
-		server  = flag.String("s", "", "hdc server host[:port] to use exclusively (remote hdc machine)")
-		noOpen  = flag.Bool("no-open", false, "do not open a browser")
-		debug   = flag.Bool("debug", false, "enable debug logging")
-		showVer = flag.Bool("version", false, "print version and exit")
+		httpAddr  = flag.String("http", "", "HTTP listen address; giving -http/-https replaces the configured listeners (empty disables)")
+		httpsAddr = flag.String("https", "", "HTTPS listen address with self-signed cert; giving -http/-https replaces the configured listeners (empty disables)")
+		cfgPath   = flag.String("config", "", "config file path")
+		hdcPath   = flag.String("hdc", "", "path to the hdc executable")
+		server    = flag.String("s", "", "hdc server host[:port] to use exclusively (remote hdc machine)")
+		noOpen    = flag.Bool("no-open", false, "do not open a browser")
+		debug     = flag.Bool("debug", false, "enable debug logging")
+		showVer   = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
 	if *showVer {
@@ -56,19 +57,27 @@ func main() {
 		slog.Error("load config", "err", err)
 		os.Exit(1)
 	}
-	if *listen != "" {
-		cfg.Listen = *listen
-	}
 	if *hdcPath != "" {
 		cfg.HdcPath = *hdcPath
 	}
 	if *server != "" {
 		cfg.Server = *server
 	}
+	// flag.Visit distinguishes an absent flag from an explicit empty value.
+	// Any explicit listener flag replaces the configured listener set: the
+	// scheme whose flag is absent is disabled, so `-https 0.0.0.0:8899` does
+	// not also bind a configured HTTP listener on the same address.
+	var provided = map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { provided[f.Name] = true })
+	applyListenerFlags(cfg, *httpAddr, *httpsAddr, provided["http"], provided["https"])
 	if *debug {
 		cfg.Debug = true
 	}
 	cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid listen configuration", "err", err)
+		os.Exit(1)
+	}
 	if cfg.Server != "" {
 		slog.Info("using hdc server override", "server", cfg.Server)
 	}
@@ -112,18 +121,43 @@ func main() {
 		os.Exit(130)
 	}()
 
-	url := webui.URL(cfg.Listen)
+	url := ""
+	switch {
+	case cfg.HTTPSListen != "":
+		url = webui.HTTPSURL(cfg.HTTPSListen)
+	case cfg.HTTPListen != "":
+		url = webui.URL(cfg.HTTPListen)
+	}
 	if !*noOpen && cfg.AutoOpenBrowser {
 		if err := openBrowser(url); err != nil {
 			slog.Warn("open browser", "url", url, "err", err)
 		}
 	}
-	slog.Info("hoscpy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH, "listen", cfg.Listen, "url", url)
+	slog.Info("hoscpy", "version", version, "os", runtime.GOOS, "arch", runtime.GOARCH,
+		"http_listen", cfg.HTTPListen, "https_listen", cfg.HTTPSListen, "url", url)
 	if err := ui.ListenAndServe(ctx); err != nil {
 		slog.Error("http server", "err", err)
 	}
 	mgr.Close(context.Background())
 	close(done)
+}
+
+// applyListenerFlags applies -http/-https overrides. Passing either flag
+// replaces the whole configured listener set; the scheme whose flag is absent
+// is disabled. This keeps `-https 0.0.0.0:8899` from also binding a configured
+// HTTP listener on the same address.
+func applyListenerFlags(cfg *config.Config, httpAddr, httpsAddr string, httpSet, httpsSet bool) {
+	if !httpSet && !httpsSet {
+		return
+	}
+	cfg.HTTPListen = ""
+	cfg.HTTPSListen = ""
+	if httpSet {
+		cfg.HTTPListen = httpAddr
+	}
+	if httpsSet {
+		cfg.HTTPSListen = httpsAddr
+	}
 }
 
 func openBrowser(url string) error {

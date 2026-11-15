@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -243,8 +244,8 @@ func (s *Server) setConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next.Normalize()
-	if _, _, err := net.SplitHostPort(next.Listen); err != nil {
-		writeErr(w, 400, fmt.Errorf("invalid listen address: %w", err))
+	if err := next.Validate(); err != nil {
+		writeErr(w, 400, err)
 		return
 	}
 	*s.cfg = next
@@ -359,37 +360,110 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 	writeJSON(w, code, map[string]string{"error": err.Error()})
 }
 
-// ListenAndServe runs the HTTP server until ctx is done.
+// ListenAndServe runs the configured HTTP and HTTPS listeners until ctx is
+// done. HTTPS uses a generated self-signed certificate persisted next to the
+// config file.
 func (s *Server) ListenAndServe(ctx context.Context) error {
-	ln, err := net.Listen("tcp", s.cfg.Listen)
-	if err != nil {
+	if err := s.cfg.Validate(); err != nil {
 		return err
 	}
-	srv := &http.Server{
-		Handler:           s.Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
+	type endpoint struct {
+		label    string
+		addr     string
+		url      string
+		tls      bool
+		certFile string
+		keyFile  string
 	}
+	var endpoints []endpoint
+	if s.cfg.HTTPListen != "" {
+		endpoints = append(endpoints, endpoint{label: "http", addr: s.cfg.HTTPListen, url: URL(s.cfg.HTTPListen)})
+	}
+	if s.cfg.HTTPSListen != "" {
+		certFile, keyFile, err := ensureSelfSignedCert(filepath.Join(filepath.Dir(s.cfgPath), "tls"), s.cfg.HTTPSListen)
+		if err != nil {
+			return fmt.Errorf("prepare TLS certificate: %w", err)
+		}
+		endpoints = append(endpoints, endpoint{
+			label: "https", addr: s.cfg.HTTPSListen, url: HTTPSURL(s.cfg.HTTPSListen),
+			tls: true, certFile: certFile, keyFile: keyFile,
+		})
+	}
+	handler := s.Handler()
+	servers := make([]*http.Server, len(endpoints))
+	listeners := make([]net.Listener, len(endpoints))
+	for i, ep := range endpoints {
+		ln, err := net.Listen("tcp", ep.addr)
+		if err != nil {
+			for _, l := range listeners {
+				if l != nil {
+					_ = l.Close()
+				}
+			}
+			return fmt.Errorf("%s listen %s: %w", ep.label, ep.addr, err)
+		}
+		listeners[i] = ln
+		servers[i] = &http.Server{
+			Handler:           handler,
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+		}
+		slog.Info("web ui listening", "scheme", ep.label, "listen", ep.addr, "url", ep.url, "hdc", s.hdc.Bin)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	go func() {
 		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutdown)
+		shutdown, done := context.WithTimeout(context.Background(), 5*time.Second)
+		defer done()
+		for _, srv := range servers {
+			_ = srv.Shutdown(shutdown)
+		}
 	}()
-	// URL is the browser-openable form (wildcards map to loopback); listen is
-	// the address actually requested, so the two must be labeled separately.
-	slog.Info("web ui listening", "listen", s.cfg.Listen, "url", URL(s.cfg.Listen), "hdc", s.hdc.Bin)
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+
+	errCh := make(chan error, len(servers))
+	for i := range servers {
+		srv, ln, ep := servers[i], listeners[i], endpoints[i]
+		go func() {
+			var err error
+			if ep.tls {
+				err = srv.ServeTLS(ln, ep.certFile, ep.keyFile)
+			} else {
+				err = srv.Serve(ln)
+			}
+			if errors.Is(err, http.ErrServerClosed) {
+				err = nil
+			}
+			errCh <- err
+			if err != nil {
+				cancel()
+			}
+		}()
 	}
-	return nil
+	var firstErr error
+	for range servers {
+		if err := <-errCh; err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
-// URL returns a browser-friendly URL for the listen address.
+// URL returns a browser-friendly HTTP URL for the listen address.
 func URL(addr string) string {
+	return schemeURL("http", addr)
+}
+
+// HTTPSURL returns a browser-friendly HTTPS URL for the listen address.
+func HTTPSURL(addr string) string {
+	return schemeURL("https", addr)
+}
+
+func schemeURL(scheme, addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "http://" + addr
+		return scheme + "://" + addr
 	}
 	switch host {
 	case "", "0.0.0.0":
@@ -403,5 +477,5 @@ func URL(addr string) string {
 	if _, err := strconv.Atoi(port); err != nil {
 		port = "8899"
 	}
-	return "http://" + host + ":" + port + "/"
+	return scheme + "://" + host + ":" + port + "/"
 }

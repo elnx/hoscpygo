@@ -97,9 +97,14 @@
       <label class="field">hdc 路径（留空自动检测/内置）
         <input id="cfgHdc" placeholder="hdc">
       </label>
-      <label class="field">监听地址（修改后需重启）
-        <input id="cfgListen">
-      </label>
+      <div class="row">
+        <label class="field">HTTP 监听（留空禁用，需重启）
+          <input id="cfgHTTPListen" placeholder="127.0.0.1:8899">
+        </label>
+        <label class="field">HTTPS 监听（自签证书，留空禁用）
+          <input id="cfgHTTPSListen" placeholder="0.0.0.0:9443">
+        </label>
+      </div>
       <div class="row">
         <label class="field">自动打开浏览器
           <select id="cfgOpen"><option value="true">是</option><option value="false">否</option></select>
@@ -113,7 +118,7 @@
         <button id="reloadConfig">重新读取</button>
       </div>
       <div style="color:var(--muted);font-size:12px">
-        高帧率/全分辨率视频解码建议使用 Chrome/Edge（WebCodecs 硬件解码）。
+        高帧率/全分辨率视频解码建议使用 Chrome/Edge（WebCodecs 硬件解码，需通过 https 或 127.0.0.1/localhost 访问；局域网可在上方开启 HTTPS 监听，首次需接受自签证书）。
         图片流约 8fps，仅在视频不可用时作为回退。
       </div>
     </div>

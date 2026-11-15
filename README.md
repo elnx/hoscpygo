@@ -28,7 +28,9 @@ available, with an **MSE/jmuxer** fallback. The Go process never decodes video.
 - Layout (view hierarchy) dump, tree view, search, bounds highlight, tap center.
 - Screenshot (live image frame or `snapshot_display`).
 - Settings for mode, scale, fps, bitrate, I-frame interval, remote hdc servers,
-  hdc path and listen address.
+  hdc path, HTTP/HTTPS listen addresses.
+- Optional HTTPS listener with a persistent self-signed certificate, so LAN
+  browsers get a secure context and can use WebCodecs.
 - Automatic video-server variant selection and H.264 keyframe request on connect.
 
 ## Quick start
@@ -37,6 +39,9 @@ available, with an **MSE/jmuxer** fallback. The Go process never decodes video.
 make build
 ./bin/hoscpy
 # open http://127.0.0.1:8899/
+
+# Also serve HTTPS on the LAN (self-signed cert; accept the browser warning):
+./bin/hoscpy -http 127.0.0.1:8899 -https 0.0.0.0:9443
 
 # Use only the hdc server running on another machine:
 ./bin/hoscpy -s 192.0.2.10:8710
@@ -59,7 +64,8 @@ Requirements on the host:
 Flags:
 
 ```
--listen 127.0.0.1:8899   HTTP listen address
+-http 127.0.0.1:8899    HTTP listen address
+-https 0.0.0.0:9443     HTTPS listen address with a self-signed cert
 -config <path>           config file (default: user config dir/hoscpygo/config.json)
 -hdc <path>              hdc executable
 -s <host[:port]>         use only this hdc server (default port 8710)
@@ -67,6 +73,43 @@ Flags:
 -debug                   debug logging
 -version                 print version
 ```
+
+Passing either listener flag replaces the configured listener set: the scheme
+whose flag is absent is disabled. So `-https 0.0.0.0:8899` serves only HTTPS on
+8899 instead of colliding with a configured HTTP listener, and `-http ...`
+alone serves only HTTP. Pass both flags to run both listeners, or an explicit
+empty value to disable one:
+
+```bash
+./bin/hoscpy -https 0.0.0.0:8899          # HTTPS only, even if config has HTTP
+./bin/hoscpy -http 0.0.0.0:8899 -https 0.0.0.0:9443   # both
+./bin/hoscpy -http "" -https 0.0.0.0:9443 # HTTPS only
+```
+
+With no listener flags, the configured addresses are used.
+
+The config file stores the same settings as `http_listen` and `https_listen`.
+Older configs with the single `listen` key are migrated to `http_listen` on
+load. Listener changes require a restart; device settings apply to new
+connections.
+
+### HTTPS and WebCodecs
+
+WebCodecs (`VideoDecoder`) is only exposed in a secure context. Chrome counts
+`https://` and `http://localhost|127.0.0.1` as secure, but not
+`http://192.168.x.x`, so a LAN page cannot use it over plain HTTP. `-https`
+adds an HTTPS listener that fixes that:
+
+- On first use a self-signed certificate and key are generated next to the
+  config file (`<config dir>/tls/cert.pem`, `key.pem`) and reused on later
+  starts. Deleting them forces a new pair.
+- SANs cover `localhost`, the hostname, and every interface address; browsers
+  still show a self-signed warning until it is accepted or the certificate is
+  installed as trusted. Accept it with the browser's advanced/proceed option.
+- Once the page is loaded over HTTPS, the UI uses `wss://` automatically and
+  WebCodecs is available; MSE remains the fallback if it is not.
+- TLS protects transport only. There is still no authentication; do not expose
+  the listener to untrusted networks.
 
 URL shortcuts:
 

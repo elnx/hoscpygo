@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestNormalizeServer(t *testing.T) {
 	cases := map[string]string{
@@ -44,5 +48,69 @@ func TestNormalizeDefaults(t *testing.T) {
 	c.Normalize()
 	if c.Scale != 2 || c.FrameRate != 60 || c.BitRateMbps != 8 || c.ImageScale != 0.5 {
 		t.Fatalf("unexpected defaults: %+v", c)
+	}
+}
+
+func TestLoadLegacyListen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"listen":"0.0.0.0:9000","scale":3}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HTTPListen != "0.0.0.0:9000" || c.HTTPSListen != "" || c.Scale != 3 {
+		t.Fatalf("legacy migration: %+v", c)
+	}
+}
+
+func TestLoadListenerKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"http_listen":"127.0.0.1:9001","https_listen":"0.0.0.0:9443"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HTTPListen != "127.0.0.1:9001" || c.HTTPSListen != "0.0.0.0:9443" {
+		t.Fatalf("listener keys: %+v", c)
+	}
+}
+
+func TestLoadExplicitEmptyHTTPStaysDisabled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"http_listen":"","https_listen":"0.0.0.0:9443"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HTTPListen != "" || c.HTTPSListen != "0.0.0.0:9443" {
+		t.Fatalf("explicit empty http: %+v", c)
+	}
+}
+
+func TestValidateListen(t *testing.T) {
+	c := Default()
+	if err := c.Validate(); err != nil {
+		t.Fatalf("default: %v", err)
+	}
+	c.HTTPListen, c.HTTPSListen = "", ""
+	if err := c.Validate(); err == nil {
+		t.Fatal("both empty must fail")
+	}
+	c.HTTPSListen = "not-an-address"
+	if err := c.Validate(); err == nil {
+		t.Fatal("bad address must fail")
+	}
+	c.HTTPSListen = "0.0.0.0:9443"
+	if err := c.Validate(); err != nil {
+		t.Fatalf("https only: %v", err)
 	}
 }
